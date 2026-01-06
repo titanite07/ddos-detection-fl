@@ -1,6 +1,6 @@
 # Multi-Dataset Feature Selection Comparison
 
-**Generated**: 2026-01-06 00:13:41
+**Generated**: 2026-01-06 20:53:41
 
 ---
 
@@ -10,31 +10,31 @@
 
 | Method | Features | Time (s) | Status |
 |--------|----------|----------|--------|
-| mutual_information | 40 | 7.30 | ✅ |
+| mutual_information | 40 | 5.52 | ✅ |
 | anova_f | 40 | 0.02 | ✅ |
-| random_forest | 40 | 0.29 | ✅ |
-| ensemble | 40 | 5.32 | ✅ |
-| rl_dqn | 11 | 176.80 | ✅ |
-| dnn_attention | 40 | 515.28 | ✅ |
-| dnn_concrete | 1 | 655.48 | ✅ |
+| random_forest | 40 | 0.51 | ✅ |
+| ensemble | 40 | 6.98 | ✅ |
+| rl_dqn | 11 | 162.37 | ✅ |
+| dnn_attention | 40 | 592.05 | ✅ |
+| dnn_concrete | 1 | 399.58 | ✅ |
 | shap | 0 | 0.00 | ❌ |
 | genetic_algorithm | 0 | 0.00 | ❌ |
-| boruta | 40 | 34.17 | ✅ |
+| boruta | 40 | 35.93 | ✅ |
 
 ### NSLKDD
 
 | Method | Features | Time (s) | Status |
 |--------|----------|----------|--------|
-| mutual_information | 40 | 5.12 | ✅ |
+| mutual_information | 40 | 7.13 | ✅ |
 | anova_f | 40 | 0.01 | ✅ |
-| random_forest | 40 | 0.31 | ✅ |
-| ensemble | 40 | 5.02 | ✅ |
-| rl_dqn | 11 | 22.29 | ✅ |
-| dnn_attention | 40 | 85.94 | ✅ |
-| dnn_concrete | 6 | 72.91 | ✅ |
+| random_forest | 40 | 0.39 | ✅ |
+| ensemble | 40 | 4.64 | ✅ |
+| rl_dqn | 9 | 23.62 | ✅ |
+| dnn_attention | 40 | 101.58 | ✅ |
+| dnn_concrete | 6 | 104.86 | ✅ |
 | shap | 0 | 0.00 | ❌ |
 | genetic_algorithm | 0 | 0.00 | ❌ |
-| boruta | 30 | 3.38 | ✅ |
+| boruta | 30 | 4.85 | ✅ |
 
 ## Dataset Comparison
 
@@ -46,7 +46,7 @@ Comparing **cicddos2019** vs **nslkdd**
 | anova_f | 40 | 40 | N/A* |
 | random_forest | 40 | 40 | N/A* |
 | ensemble | 40 | 40 | N/A* |
-| rl_dqn | 11 | 11 | N/A* |
+| rl_dqn | 11 | 9 | N/A* |
 | dnn_attention | 40 | 40 | N/A* |
 | dnn_concrete | 1 | 6 | N/A* |
 | boruta | 40 | 30 | N/A* |

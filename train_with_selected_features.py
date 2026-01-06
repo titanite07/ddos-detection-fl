@@ -27,11 +27,22 @@ def main():
     logger.info("="*70)
     
     # Load selection results
-    selection_file = Path("data/processed/advanced_feature_selection_40features.pkl")
+    possible_files = [
+        Path("data/processed/cicddos2019_full_processed_feature_selection.pkl"),
+        Path("data/processed/comprehensive_feature_selection.pkl"),
+        Path("data/processed/advanced_feature_selection_25features.pkl")
+    ]
     
-    if not selection_file.exists():
-        logger.error(f"Selection results not found: {selection_file}")
-        logger.info("Please run: python run_advanced_feature_selection.py")
+    selection_file = None
+    for file_path in possible_files:
+        if file_path.exists():
+            selection_file = file_path
+            logger.info(f"Found: {selection_file}")
+            break
+    
+    if not selection_file:
+        logger.error("No feature selection results found!")
+        logger.info("Please run: python run_multi_dataset_selection.py")
         return 1
     
     with open(selection_file, 'rb') as f:
@@ -40,9 +51,11 @@ def main():
     # Choose method
     print("\nWhich selection method to use?")
     for i, method in enumerate(results.keys(), 1):
-        num_features = results[method]['num_features']
-        time_taken = results[method]['time']
+        # Safely get number of features
+        num_features = results[method].get('num_features', len(results[method].get('indices', [])))
+        time_taken = results[method].get('time', 0)
         print(f"{i}. {method}: {num_features} features ({time_taken:.1f}s)")
+    
     
     choice = int(input("\nEnter choice: ").strip()) - 1
     method = list(results.keys())[choice]
