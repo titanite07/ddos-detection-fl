@@ -1,0 +1,31 @@
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Large data files (will be in Google Drive)
+datasets/
+models/
+results/
+logs/
+*.csv
+*.h5
+*.pkl
+
+# IDE and OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+.env.local
