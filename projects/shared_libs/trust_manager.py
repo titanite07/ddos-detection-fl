@@ -512,3 +512,19 @@ class TrustManager:
                 self.get_trust_score(node_id) >= self.min_trust_threshold):
                 trusted.append(node_id)
         return trusted
+    
+    def summary(self):
+        """Print trust management summary"""
+        logger.info("\n" + "="*70)
+        logger.info("TRUST MANAGEMENT SUMMARY")
+        logger.info("="*70)
+        logger.info(f"Total nodes: {len(self.registered_nodes)}")
+        logger.info(f"Trusted nodes: {len(self.get_trusted_nodes())}")
+        logger.info(f"Quarantined nodes: {len(self.quarantined_nodes)}")
+        logger.info("\nNode Trust Scores:")
+        for node_id in sorted(self.registered_nodes.keys()):
+            trust = self.get_trust_score(node_id)
+            status = "✓" if trust >= self.min_trust_threshold else "✗"
+            quarantine = " [QUARANTINED]" if node_id in self.quarantined_nodes else ""
+            logger.info(f"  {status} {node_id}: {trust:.3f}{quarantine}")
+        logger.info("="*70)
