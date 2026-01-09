@@ -5,6 +5,14 @@ Demonstrates FL with Byzantine-resistant aggregation and malicious node detectio
 """
 
 import sys
+from pathlib import Path
+
+# Add project root to path
+project_root = Path(__file__).parent.parent.parent.parent.parent
+sys.path.insert(0, str(project_root))
+
+
+import sys
 import numpy as np
 import pickle
 from pathlib import Path
@@ -20,7 +28,7 @@ from projects.shared_libs.trust_manager import TrustManager
 from projects.shared_libs.byzantine_defense import ByzantineRobustAggregator, MaliciousNodeSimulator
 from projects.fl.aggregation_server import FederatedServer
 from projects.fl.fl_node_client import FLNode
-from load_dataset import reshape_for_cnn_bilstm
+from scripts.data.load_cicddos import reshape_for_cnn_bilstm
 
 
 class SecureFLServer(FederatedServer):

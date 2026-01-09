@@ -1,24 +1,27 @@
 """
-Multi-Node Federated Learning Simulation
+Standard Federated Learning Simulation
 
-Simulates FL training across multiple organizations with the trained CNN-BiLSTM model.
+Demonstrates basic FL with FedAvg aggregation across 5 nodes.
 """
 
 import sys
+from pathlib import Path
+
+# Add project root to path
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
+
 import numpy as np
 import pickle
-from pathlib import Path
 import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-sys.path.insert(0, str(Path(__file__).parent))
-
 from projects.shared_libs import CNNBiLSTMModel
 from projects.fl.aggregation_server import SimpleFLServer
 from projects.fl.fl_node_client import FLNode
-from load_dataset import reshape_for_cnn_bilstm
+from scripts.data.load_cicddos import reshape_for_cnn_bilstm
 
 
 def split_data_for_nodes(
