@@ -8,15 +8,12 @@ to prove scalability and identify optimal deployment size.
 import sys
 from pathlib import Path
 
-# Add project root to path
-project_root = Path(__file__).parent.parent.parent.parent.parent
+# Add project root to path  
+project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-
-import sys
 import numpy as np
 import pickle
-from pathlib import Path
 import logging
 from datetime import datetime
 import json
@@ -24,8 +21,6 @@ import time
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-sys.path.insert(0, str(Path(__file__).parent))
 
 from projects.shared_libs import CNNBiLSTMModel
 from projects.shared_libs.trust_manager import TrustManager
