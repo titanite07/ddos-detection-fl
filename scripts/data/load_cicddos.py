@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # Add projects to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from projects.shared_libs import (
+from ddosdfl.projects.shared_libs import (
     DatasetLoader, FeatureExtractor, DataPartitioner, split_data,
     CNNBiLSTMModel, ModelTrainer
 )
