@@ -1,12 +1,10 @@
-# Byte-compiled / optimized / DLL files
+# Git ignore file for FL DDoS Detection project
+
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-
-# C extensions
 *.so
-
-# Distribution / packaging
 .Python
 build/
 develop-eggs/
@@ -24,15 +22,73 @@ wheels/
 .installed.cfg
 *.egg
 
-# PyInstaller
-*.manifest
-*.spec
+# Virtual environments
+.venv/
+.venv-wsl/
+venv/
+ENV/
+env/
 
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
+# TensorFlow / ML
+*.h5
+*.hdf5
+*.pb
+checkpoints/
+fl_checkpoints/
+model_checkpoints/
+*.ckpt
+*.ckpt.*
+*.index
+*.meta
+*.data-*
 
-# Unit test / coverage reports
+# Dataset files (too large for git)
+*.csv
+*.parquet
+*.feather
+datasets/
+data/
+
+# Logs
+*.log
+logs/
+*.out
+*.err
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment variables
+.env
+.env.local
+*.key
+*.pem
+
+# Blockchain
+fabric/crypto-config/
+fabric/channel-artifacts/
+fabric/*.tar.gz
+fabric/*.block
+fabric/.hfc-*/
+
+# Go vendor directories (dependencies)
+vendor/
+*/vendor/
+**/vendor/
+
+# Docker
+docker-compose.override.yml
+
+# Test coverage
 htmlcov/
 .tox/
 .coverage
@@ -41,100 +97,40 @@ htmlcov/
 nosetests.xml
 coverage.xml
 *.cover
-.hypothesis/
-.pytest_cache/
 
-# Translations
-*.mo
-*.pot
-
-# Django stuff:
-*.log
-local_settings.py
-
-# Flask stuff:
-instance/
-.webassets-cache
-
-# Scrapy stuff:
-.scrapy
-
-# Sphinx documentation
+# Documentation builds
 docs/_build/
+site/
 
-# PyBuilder
-target/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# pyenv
-.python-version
-
-# celery beat schedule file
-celerybeat-schedule
-
-# SageMath parsed files
-*.sage.py
-
-# Environments
-.env.local
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
-/site
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# IDE
-.vscode/
-.idea/
+# Temporary files
+*.tmp
+*.bak
 *.swp
-*.swo
 *~
-
-# OS
 .DS_Store
 Thumbs.db
 
+# Windows
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Sensitive data
+secrets/
+private/
+*.secret
+api_keys.txt
+credentials.json
+
+# Large files
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
 # Project specific
-*.npz.bak
-*.pkl.bak
-*.h5.bak
-*.keras.bak
-temp/
-tmp/
-scratch/
-*.checkpoint
-
-# Large data files (optional - comment out if you want to include)
-# data/raw/*
-# data/processed/*.npz
-
-# Model checkpoints (keep only final models)
-fl_checkpoints/
-models/checkpoints/
-
-# Results that are too large
-results/**/temp_*
-results/**/*.png
-results/**/*.jpg
-
-# Keep important result summaries
-!results/**/*summary*.json
-!results/**/*validation*.json
+Results.txt
+activation.txt
+*.old
+*.backup

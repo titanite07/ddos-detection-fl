@@ -9,6 +9,16 @@ import logging
 import requests
 import json
 from typing import Dict, List, Optional, Any
+from pathlib import Path
+
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    # Load from project root .env file
+    env_path = Path(__file__).parent.parent.parent / '.env'
+    load_dotenv(dotenv_path=env_path)
+except ImportError:
+    pass  # python-dotenv not installed, will use system env vars
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
