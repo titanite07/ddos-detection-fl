@@ -1,8 +1,7 @@
 """
-FINAL WORKING Meta-Learning Layer Test
-Guaranteed to achieve 70%+ accuracy
+Meta-Learning test with few-shot adaptation
+Target: 70%+ accuracy on binary classification
 """
-
 import sys
 from pathlib import Path
 project_root = Path(__file__).parent.parent
@@ -14,35 +13,31 @@ from scripts.data.generate_modern_2026_attacks import Modern2026AttackGenerator
 from scripts.data.load_cicddos import reshape_for_cnn_bilstm
 from sklearn.model_selection import train_test_split
 
-print("="*70)
-print("META-LEARNING LAYER - FINAL WORKING VERSION")
-print("="*70)
+print("\n" + "="*60)
+print("Meta-Learning Layer Test")
+print("="*60)
 
-# Generate data
+# Generate synthetic data
 generator = Modern2026AttackGenerator(seed=42)
 X, y = generator.generate_modern_dataset(num_samples=15000, num_features=40)
 
-# Reshape
+# Reshape for CNN-BiLSTM
 timesteps = 10
 X_reshaped = reshape_for_cnn_bilstm(X, timesteps)
 
-# Split
 X_train, X_test, y_train, y_test = train_test_split(
     X_reshaped, y, test_size=0.2, random_state=42, stratify=y
 )
 
-# Binary classification: BENIGN (0) vs ATTACK (>0)
-y_train_binary = np.where(y_train == 0, 0, 1).astype(np.int64)
-y_test_binary = np.where(y_test == 0, 0, 1).astype(np.int64)
+# Convert to binary (benign vs attack)
+y_train_bin = np.where(y_train == 0, 0, 1).astype(np.int64)
+y_test_bin = np.where(y_test == 0, 0, 1).astype(np.int64)
 
-print(f"\nData prepared:")
-print(f"  Train: {X_train.shape}")
-print(f"  Test: {X_test.shape}")
-print(f"  BENIGN: {np.sum(y_train_binary == 0):,}")
-print(f"  ATTACK: {np.sum(y_train_binary == 1):,}")
+print(f"\nDataset: Train {X_train.shape}, Test {X_test.shape}")
+print(f"Classes: {np.sum(y_train_bin == 0):,} benign, {np.sum(y_train_bin == 1):,} attack")
 
-# Build binary model
-print(f"\nBuilding binary meta-learner...")
+# Build model
+print("\nBuilding CNN-BiLSTM...")
 model = CNNBiLSTMModel(
     input_shape=X_train.shape[1:],
     num_classes=2,
@@ -56,46 +51,48 @@ model.compile(
     metrics=['accuracy']
 )
 
-# Train
-print(f"Training (5 epochs)...")
+# Base training
+print("Training base model (5 epochs)...")
 history = model.fit(
-    X_train[:6000], y_train_binary[:6000],
+    X_train[:6000], y_train_bin[:6000],
     epochs=5,
     batch_size=128,
-    validation_data=(X_test, y_test_binary),
+    validation_data=(X_test, y_test_bin),
     verbose=1
 )
 
 train_acc = history.history['accuracy'][-1]
 val_acc = history.history['val_accuracy'][-1]
 
-# Few-shot: fine-tune on 40 samples
-print(f"\nFew-shot adaptation (40 samples)...")
-benign_idx = np.where(y_train_binary == 0)[0][:20]
-attack_idx = np.where(y_train_binary == 1)[0][:20]
+# Few-shot adaptation (40 samples total)
+print("\nFew-shot fine-tuning (20 benign + 20 attack)...")
+benign_idx = np.where(y_train_bin == 0)[0][:20]
+attack_idx = np.where(y_train_bin == 1)[0][:20]
 few_shot_idx = np.concatenate([benign_idx, attack_idx])
 
-X_few = X_train[few_shot_idx]
-y_few = y_train_binary[few_shot_idx]
+model.fit(
+    X_train[few_shot_idx], 
+    y_train_bin[few_shot_idx], 
+    epochs=10, 
+    batch_size=40, 
+    verbose=0
+)
 
-model.fit(X_few, y_few, epochs=10, batch_size=len(X_few), verbose=0)
+# Evaluate
+final_loss, final_acc = model.evaluate(X_test, y_test_bin, verbose=0)
 
-# Final evaluation
-results = model.evaluate(X_test, y_test_binary, verbose=0)
-final_acc = results[1]
-final_loss = results[0]
-
-print(f"\n" + "="*70)
-print("RESULTS")
-print("="*70)
-print(f"  Training accuracy: {train_acc*100:.2f}%")
-print(f"  Base validation: {val_acc*100:.2f}%")
-print(f"  Few-shot adapted: {final_acc*100:.2f}%")
-print(f"  Few-shot loss: {final_loss:.4f}")
+print(f"\n{'='*60}")
+print("Results")
+print(f"{'='*60}")
+print(f"Base training:    {train_acc*100:.2f}%")
+print(f"Base validation:  {val_acc*100:.2f}%")
+print(f"Few-shot adapted: {final_acc*100:.2f}%")
+print(f"Loss: {final_loss:.4f}")
 
 if final_acc >= 0.7:
-    print(f"\n✓ SUCCESS: Achieved {final_acc*100:.2f}% (target: 70%+)")
+    print(f"\n✓ Target achieved: {final_acc*100:.2f}% (>= 70%)")
 else:
-    print(f"\n⚠  Low accuracy: {final_acc*100:.2f}% (target: 70%+)")
+    print(f"\n⚠ Below target: {final_acc*100:.2f}% (target: 70%)")
 
-print(f"\nRecommendation: Use {final_acc*100:.2f}% for layer analysis")
+# TODO: save model if accuracy is good enough
+print(f"\nFinal accuracy for analysis: {final_acc*100:.2f}%")

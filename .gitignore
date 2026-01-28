@@ -80,6 +80,11 @@ fabric/*.tar.gz
 fabric/*.block
 fabric/.hfc-*/
 
+# Go vendor directories (dependencies)
+vendor/
+*/vendor/
+**/vendor/
+
 # Docker
 docker-compose.override.yml
 

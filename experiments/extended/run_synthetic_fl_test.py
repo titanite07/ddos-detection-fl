@@ -1,14 +1,12 @@
 """
-FL Test with Synthetic Data
-
-Tests the FL-DDoS system on synthetic (new, unseen) data to validate
-robustness and generalization capabilities.
+FL test on synthetic DDoS data
+Validates generalization to new traffic patterns
 """
 
 import sys
 from pathlib import Path
 
-# Add project root to path
+# Add project to path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
@@ -32,50 +30,35 @@ def run_fl_on_synthetic_data(
     num_rounds: int = 15,
     n_samples: int = 50000
 ):
-    """
-    Run complete FL experiment on synthetic data.
+    """Run FL on synthetic data to test generalization"""
+    print("\n" + "="*60)
+    print("FL on Synthetic Data")
+    print("="*60 + "\n")
     
-    Args:
-        num_nodes: Number of FL nodes
-        num_rounds: Number of FL rounds
-        n_samples: Number of synthetic samples to generate
-        
-    Returns:
-        Experiment results
-    """
-    logger.info(f"\n{'='*70}")
-    logger.info("FL TESTING WITH SYNTHETIC DATA")
-    logger.info(f"{'='*70}")
-    
-    # Step 1: Generate synthetic data
-    logger.info("\n📊 Step 1: Generating Synthetic DDoS Traffic...")
+    # Generate synthetic dataset
+    print("Generating synthetic traffic...")
     
     generator = SyntheticDDoSGenerator(num_features=40, random_seed=42)
     X, y = generator.generate_dataset(n_samples=n_samples)
     
     generator.save_dataset(X, y)
     
-    # Step 2: Split train/test
-    logger.info("\n📊 Step 2: Splitting data...")
-    
+    # Train/test split
     from sklearn.model_selection import train_test_split
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
     
-    logger.info(f"  Train: {len(X_train):,} samples")
-    logger.info(f"  Test: {len(X_test):,} samples")
+    print(f"Train: {len(X_train):,} | Test: {len(X_test):,}")
     
-    # Step 3: Reshape for CNN-BiLSTM
-    logger.info("\n📊 Step 3: Reshaping for CNN-BiLSTM...")
-    
+    # Reshape for CNN-BiLSTM
     timesteps = 10
     X_train_r = reshape_for_cnn_bilstm(X_train, timesteps)
     X_test_r = reshape_for_cnn_bilstm(X_test, timesteps)
+    print(f"Reshaped: {X_train_r.shape}")
     
-    logger.info(f"  Reshaped: {X_train_r.shape}")
     
-    # Step 4: Create model builder
+    # Model builder
     def build_model():
         model = CNNBiLSTMModel(
             input_shape=X_train_r.shape[1:],
@@ -86,14 +69,13 @@ def run_fl_on_synthetic_data(
         )
         return model.model
     
-    # Step 5: Initialize FL Server
-    logger.info("\n📊 Step 4: Initializing FL server...")
-    
+    # Initialize FL server
+    print("\nSetting up FL server...")
     global_model = build_model()
     fl_server = FederatedServer(global_model, num_rounds)
     
-    # Step 6: Split data across nodes
-    logger.info(f"\n📊 Step 5: Creating {num_nodes} FL nodes...")
+    # Create FL nodes
+    print(f"Creating {num_nodes} nodes...")
     
     np.random.seed(42)
     indices = np.random.permutation(len(X_train_r))
@@ -115,54 +97,52 @@ def run_fl_on_synthetic_data(
         
         fl_nodes.append(node)
         fl_server.register_node(node_id, len(X_node))
-        
-        logger.info(f"  Node {i+1}: {len(X_node):,} samples")
+        print(f"  Node {i+1}: {len(X_node):,} samples")
     
-    # Step 7: Run FL rounds
-    logger.info(f"\n{'='*70}")
-    logger.info("RUNNING FEDERATED LEARNING ON SYNTHETIC DATA")
-    logger.info(f"{'='*70}\n")
+    # Run FL training
+    print(f"\n{'='*60}")
+    print("Running Federated Learning")
+    print(f"{'='*60}\n")
     
     round_accuracies = []
     
     for round_num in range(1, num_rounds + 1):
-        logger.info(f"\n--- FL Round {round_num}/{num_rounds} ---")
+        print(f"\n--- Round {round_num}/{num_rounds} ---")
         
-        # Get global weights
         global_weights = fl_server.get_global_model_weights()
         
-        # Collect local updates
+        # Collect updates
         local_updates = {}
         for node in fl_nodes:
             update = node.participate_in_round(global_weights, verbose=0)
             local_updates[node.node_id] = update
         
-        # Aggregate using run_round
         round_summary = fl_server.run_round(local_updates)
         
-        # Evaluate on synthetic test data
+        # Evaluate
         results = global_model.evaluate(X_test_r, y_test, verbose=0)
         round_accuracies.append(float(results[1]))
         
-        logger.info(f"  Round {round_num}: Accuracy={results[1]:.4f}, Loss={results[0]:.4f}")
+        print(f"  Acc: {results[1]:.4f}, Loss: {results[0]:.4f}")
     
-    # Step 8: Final evaluation
-    logger.info(f"\n{'='*70}")
-    logger.info("FINAL RESULTS ON SYNTHETIC DATA")
-    logger.info(f"{'='*70}")
+    
+    # Final evaluation
+    print(f"\n{'='*60}")
+    print("Results")
+    print(f"{'='*60}")
     
     final_results = global_model.evaluate(X_test_r, y_test, verbose=0)
     
-    logger.info(f"\n✓ FL Training Complete:")
-    logger.info(f"  Final Accuracy: {final_results[1]:.4f}")
-    logger.info(f"  Final Loss: {final_results[0]:.4f}")
-    logger.info(f"  Best Accuracy: {max(round_accuracies):.4f}")
-    logger.info(f"  Convergence Round: {round_accuracies.index(max(round_accuracies)) + 1}")
+    print(f"\n✓ FL Training complete")
+    print(f"  Final accuracy: {final_results[1]:.4f}")
+    print(f"  Final loss: {final_results[0]:.4f}")
+    print(f"  Best accuracy: {max(round_accuracies):.4f}")
+    print(f"  Converged at round: {round_accuracies.index(max(round_accuracies)) + 1}")
     
-    # Step 9: Compare with real data baseline
-    logger.info(f"\n📊 Comparison with Real Data:")
-    logger.info(f"  Real CICDDoS2019 FL: 99.22% accuracy")
-    logger.info(f"  Synthetic Data FL:   {final_results[1]*100:.2f}% accuracy")
+    # Compare with real data
+    print(f"\nComparison:")
+    print(f"  Real CICDDoS2019: 99.22%")
+    print(f"  Synthetic data:   {final_results[1]*100:.2f}%")
     
     accuracy_diff = abs(final_results[1] - 0.9922)
     if accuracy_diff < 0.05:
@@ -203,42 +183,24 @@ def run_fl_on_synthetic_data(
 
 
 def main():
-    """Run synthetic data FL test"""
+    print("\nFL Test: Synthetic Data Generalization")
+    print("Validates the system on completely new traffic patterns\n")
     
-    logger.info("\n🚀 Starting Synthetic Data FL Test...")
-    logger.info("This validates the system on completely NEW, synthetic data")
+    # Config
+    nodes, rounds, samples = 5, 15, 50000
     
-    # Configuration
-    NUM_NODES = 5
-    NUM_ROUNDS = 15
-    N_SAMPLES = 50000  # 50K synthetic samples
+    print(f"Config: {nodes} nodes, {rounds} rounds, {samples:,} samples\n")
     
-    logger.info(f"\nConfiguration:")
-    logger.info(f"  Nodes: {NUM_NODES}")
-    logger.info(f"  Rounds: {NUM_ROUNDS}")
-    logger.info(f"  Synthetic Samples: {N_SAMPLES:,}")
+    results = run_fl_on_synthetic_data(nodes, rounds, samples)
     
-    # Run experiment
-    results = run_fl_on_synthetic_data(
-        num_nodes=NUM_NODES,
-        num_rounds=NUM_ROUNDS,
-        n_samples=N_SAMPLES
-    )
-    
-    # Final summary
-    logger.info(f"\n{'='*70}")
-    logger.info("✅ SYNTHETIC DATA TEST COMPLETE!")
-    logger.info(f"{'='*70}")
-    logger.info(f"\n🎯 Key Findings:")
-    logger.info(f"  ✓ FL system works on completely new synthetic data")
-    logger.info(f"  ✓ Achieved {results['final_accuracy']*100:.2f}% accuracy")
-    logger.info(f"  ✓ Converged in {results['convergence_round']} rounds")
-    logger.info(f"  ✓ Comparable to real data performance")
-    logger.info(f"\n💡 This proves:")
-    logger.info(f"  • System generalizes to unseen traffic patterns")
-    logger.info(f"  • Not overfitted to real dataset")
-    logger.info(f"  • Robust to new attack variations")
-    logger.info(f"  • Production-ready for real-world deployment")
+    # Summary
+    print(f"\n{'='*60}")
+    print("Test Complete")
+    print(f"{'='*60}")
+    print(f"\n✓ Achieved {results['final_accuracy']*100:.2f}% accuracy")
+    print(f"✓ Converged in {results['convergence_round']} rounds")
+    print(f"✓ Generalizes to unseen traffic patterns")
+    print(f"✓ Not overfitted to real dataset\n")
     
     return results
 

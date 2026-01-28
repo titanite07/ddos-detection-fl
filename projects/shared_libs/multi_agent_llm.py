@@ -174,20 +174,35 @@ class MultiAgentCoordinator:
     def __init__(
         self,
         api_key: Optional[str] = None,
-        enable_auto_response: bool = True
+        model: str = "openai/gpt-3.5-turbo",
+        enable_auto_response: bool = False  # Changed: False = use real API if available
     ):
         """
-        Initialize multi-agent system
+        Initialize Multi-Agent Coordinator.
         
         Args:
             api_key: OpenRouter API key
-            enable_auto_response: Enable automatic LLM responses
+            model: LLM model to use
+            enable_auto_response: If True, use MOCK mode; If False, use real API
         """
         # Initialize LLM client
         self.llm_client = SimpleOpenRouterClient(
             api_key=api_key,
-            test_on_init=False
+            model=model,
+            test_on_init=not enable_auto_response  # Test API if not in mock mode
         )
+        
+        # Override mock mode based on enable_auto_response
+        if enable_auto_response:
+            self.llm_client.mock_mode = True
+            logger.info("Multi-Agent LLM Coordinator initialized in MOCK mode (auto-response enabled)")
+        else:
+            # Use real API if key is available
+            if self.llm_client.api_working:
+                self.llm_client.mock_mode = False
+                logger.info("Multi-Agent LLM Coordinator initialized with REAL API")
+            else:
+                logger.warning("API not working, falling back to MOCK mode")
         
         # Initialize specialized agents
         self.security_agent = SecurityAgent(self.llm_client)
@@ -277,7 +292,7 @@ def test_multi_agent_system():
     print("="*70)
     
     # Initialize
-    coordinator = MultiAgentCoordinator(enable_auto_response=False)
+    coordinator = MultiAgentCoordinator(enable_auto_response=Fals)
     
     print(f"\n✓ Multi-agent system initialized")
     print(f"  Agents: 4 specialized")

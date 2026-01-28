@@ -48,6 +48,7 @@ class E2ETestSuite:
             ("FL Components", self.test_fl_components),
             ("Security Components", self.test_security_components),
             ("LLM Components", self.test_llm_components),
+            ("Hybrid Conv-Transformer", self.test_hybrid_model), # NEW
             ("Phase 1: Transfer Learning", self.test_transfer_learning),
             ("Phase 2: Meta-Learning", self.test_meta_learning),
             ("Phase 3: Homomorphic Encryption", self.test_homomorphic_encryption),
@@ -230,6 +231,35 @@ class E2ETestSuite:
         logger.info(f"  ✓ Threat assessment working")
         
         return {"llm_client": "OK", "coordinator": "OK", "mode": "API" if client.api_working else "MOCK"}
+    
+    def test_hybrid_model(self):
+        """Test: Hybrid Conv-Transformer Architecture"""
+        logger.info("Testing Hybrid Conv-Transformer...")
+        
+        from projects.shared_libs import TransformerModel
+        
+        # Initialize Hybrid Model with validated parameters
+        model = TransformerModel(
+            input_shape=(10, 4),
+            num_classes=2,
+            head_size=64,
+            num_heads=4,
+            ff_dim=128,
+            num_transformer_blocks=3,
+            dropout=0.25
+        ).model
+        
+        logger.info(f"  ✓ Hybrid Model built successfully")
+        logger.info(f"  ✓ Parameters: {model.count_params():,}")
+        
+        # Simple forward pass check
+        dummy_input = np.random.randn(1, 10, 4)
+        pred = model.predict(dummy_input, verbose=0)
+        
+        assert pred.shape == (1, 2) or pred.shape == (1, 1), f"Unexpected output shape: {pred.shape}"
+        logger.info(f"  ✓ Forward pass successful")
+        
+        return {"architecture": "Hybrid Conv-Transformer", "params": model.count_params()}
     
     def test_transfer_learning(self):
         """Test 7: Transfer Learning components"""
