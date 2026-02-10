@@ -307,9 +307,9 @@ if __name__ == "__main__":
     try:
         # FULL 30GB DATASET CONFIGURATION for 90-95% accuracy
         fl_server = run_realtime_fl_experiment(
-            num_nodes=5,              # Increased from 2 for better federation
-            num_rounds=10,            # Increased from 3 for convergence
-            packets_per_node=10000    # Increased from 300 for full dataset usage
+            num_nodes=7,              # Increased from 2 for better federation
+            num_rounds=7,            # Increased from 3 for convergence
+            packets_per_node=15000    # Increased from 300 for full dataset usage
         )
         
         logger.info("\n🎉 Real-time FL system fully operational!")
