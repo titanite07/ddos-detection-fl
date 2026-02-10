@@ -134,3 +134,8 @@ Results.txt
 activation.txt
 *.old
 *.backup
+
+# Pipeline runtime outputs
+results/unified_pipeline/live_status.json
+results/unified_pipeline/live_ledger.json
+results/unified_pipeline/*.json
