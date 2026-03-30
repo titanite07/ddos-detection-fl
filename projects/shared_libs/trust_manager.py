@@ -383,7 +383,7 @@ class TrustManager:
             return False, "No recent authentication"
         
         time_since_auth = datetime.now() - credentials.last_auth
-        if time_since_auth > timedelta(hours=1):
+        if time_since_auth > timedelta(hours=24):
             return False, "Authentication expired"
         
         return True, "Authorized"

@@ -223,7 +223,12 @@ class MultiAgentCoordinator:
             security_assessment = self.security_agent.assess_threats(round_data)
             decisions['security'] = security_assessment
         else:
-            decisions['security'] = {'threat_level': 'MEDIUM', 'mock': True}
+            threat_level = "MEDIUM"
+            if len(round_data.get('anomalies_detected', [])) > 0:
+                threat_level = "CRITICAL"
+            elif self._calculate_trust_variance(round_data.get('trust_scores', {})) > 0.05:
+                threat_level = "HIGH"
+            decisions['security'] = {'threat_level': threat_level, 'mock': True}
         
         # 2. Aggregation strategy selection
         context = {
@@ -236,7 +241,12 @@ class MultiAgentCoordinator:
             strategy = self.aggregation_agent.select_strategy(context)
             decisions['aggregation_strategy'] = strategy
         else:
-            decisions['aggregation_strategy'] = 'FedAvg'
+            if context['byzantine_count'] > 0 or context['trust_variance'] > 0.10:
+                decisions['aggregation_strategy'] = 'Krum'
+            elif context['trust_variance'] > 0.01:
+                decisions['aggregation_strategy'] = 'TrimmedMean'
+            else:
+                decisions['aggregation_strategy'] = 'FedAvg'
         
         # 3. Performance optimization (if data available)
         if 'performance' in round_data:
@@ -253,7 +263,14 @@ class MultiAgentCoordinator:
             })
             decisions['explanation'] = explanation
         else:
-            decisions['explanation'] = "Multi-agent coordination complete (MOCK mode)"
+            byz = context['byzantine_count']
+            var = context['trust_variance']
+            if byz > 0:
+                decisions['explanation'] = f"Activating Krum to filter exactly {byz} quarantined nodes."
+            elif var > 0.01:
+                decisions['explanation'] = f"Trust variance elevated ({var:.4f}). Utilizing {decisions['aggregation_strategy']} to mitigate outliers."
+            else:
+                decisions['explanation'] = "Network topology stable. Enforcing FedAvg."
         
         logger.info(f"✓ Coordination complete: {decisions['aggregation_strategy']} strategy selected")
         

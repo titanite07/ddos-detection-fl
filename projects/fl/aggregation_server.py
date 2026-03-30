@@ -5,6 +5,14 @@ Implements FedAvg (Federated Averaging) algorithm for distributed model training
 Coordinates multiple FL nodes and aggregates their model updates.
 """
 
+import sys
+from pathlib import Path
+
+# Fix module imports for ddosdfl package
+project_root = Path(__file__).parent.parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 import numpy as np
 import logging
 from typing import List, Dict, Optional, Tuple

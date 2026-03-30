@@ -1,0 +1,306 @@
+/* ============================================================
+   Federated Zero-Trust DDoS Defense — Monitoring Console
+   Dashboard CSS  |  Black & White Professional Theme
+   ============================================================ */
+
+/* ── 1. Reset & Base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --black:    #111111;
+  --gray-dk:  #555555;
+  --gray-md:  #888888;
+  --gray-lt:  #DDDDDD;
+  --gray-bg:  #F5F5F5;
+  --gray-hd:  #F0F0F0;
+  --white:    #FFFFFF;
+  --green:    #1B5E20;
+  --orange:   #E65100;
+  --red:      #B71C1C;
+  --sidebar:  220px;
+  --header:   52px;
+  --font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+html, body {
+  height: 100%; font-family: var(--font);
+  font-size: 14px; color: var(--black);
+  background: var(--white);
+}
+
+/* ── 2. Top Header ── */
+.app-header {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+  height: var(--header);
+  background: var(--white);
+  border-bottom: 1px solid var(--gray-lt);
+  display: flex; align-items: center;
+  padding: 0 20px; gap: 16px;
+}
+.app-header .title {
+  font-size: 15px; font-weight: 700; letter-spacing: 0.3px;
+  color: var(--black); flex: 1;
+}
+.header-meta { display: flex; align-items: center; gap: 20px; font-size: 12px; color: var(--gray-md); }
+.conn-indicator { display: flex; align-items: center; gap: 5px; }
+.conn-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--gray-md); }
+.conn-dot.connected { background: var(--green); }
+.env-badge {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.5px;
+  border: 1px solid var(--gray-lt); padding: 2px 10px;
+  border-radius: 2px; color: var(--gray-dk);
+}
+
+/* ── 3. Layout Shell ── */
+.app-shell { display: flex; padding-top: var(--header); min-height: 100vh; }
+
+/* ── 4. Sidebar ── */
+.sidebar {
+  position: fixed; top: var(--header); left: 0; bottom: 0;
+  width: var(--sidebar); background: var(--white);
+  border-right: 1px solid var(--gray-lt);
+  padding: 20px 0; overflow-y: auto; z-index: 100;
+}
+.sidebar-section-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 1.2px;
+  color: var(--gray-md); text-transform: uppercase;
+  padding: 12px 20px 4px; margin-top: 4px;
+}
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 20px; cursor: pointer;
+  color: var(--gray-dk); font-size: 14px; font-weight: 400;
+  border-left: 3px solid transparent;
+  transition: background 0.1s ease;
+  user-select: none;
+}
+.nav-item:hover { background: var(--gray-bg); color: var(--black); }
+.nav-item.active {
+  color: var(--black); font-weight: 700;
+  border-left-color: var(--black);
+  background: var(--gray-bg);
+}
+.nav-icon { width: 16px; text-align: center; font-size: 13px; }
+
+/* Training controls in sidebar */
+.sidebar-controls { padding: 16px 20px; border-top: 1px solid var(--gray-lt); margin-top: auto; }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 16px; border-radius: 2px; font-size: 13px;
+  font-weight: 600; cursor: pointer; border: 1px solid var(--black);
+  background: var(--white); color: var(--black);
+  transition: background 0.15s ease;
+}
+.btn:hover { background: var(--gray-bg); }
+.btn-primary { background: var(--black); color: var(--white); }
+.btn-primary:hover { background: #333; }
+.btn-danger { border-color: var(--red); color: var(--red); }
+.btn-danger:hover { background: #fdf2f2; }
+.btn-full { width: 100%; justify-content: center; margin-bottom: 8px; }
+
+/* ── 5. Main Content ── */
+.main {
+  margin-left: var(--sidebar); flex: 1;
+  padding: 24px 28px; min-width: 0;
+}
+
+/* ── 6. Pages / SPA ── */
+.page { display: none; }
+.page.active { display: block; }
+
+.page-title {
+  font-size: 22px; font-weight: 700; margin-bottom: 4px; color: var(--black);
+}
+.page-subtitle {
+  font-size: 13px; color: var(--gray-md); margin-bottom: 20px;
+}
+hr.divider { border: none; border-top: 1px solid var(--gray-lt); margin: 20px 0; }
+
+/* ── 7. KPI Row ── */
+.kpi-row { display: flex; gap: 0; border: 1px solid var(--gray-lt); border-radius: 2px; margin-bottom: 24px; }
+.kpi-card {
+  flex: 1; padding: 16px 20px; border-right: 1px solid var(--gray-lt);
+}
+.kpi-card:last-child { border-right: none; }
+.kpi-value { font-size: 26px; font-weight: 800; color: var(--black); line-height: 1; }
+.kpi-label { font-size: 11px; color: var(--gray-md); text-transform: uppercase; letter-spacing: 0.8px; margin-top: 4px; }
+.kpi-delta { font-size: 11px; color: var(--gray-md); margin-top: 2px; }
+.kpi-value.positive { color: var(--green); }
+.kpi-value.warning  { color: var(--orange); }
+.kpi-value.critical { color: var(--red); }
+
+/* ── 8. Two-column layout ── */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.two-col-wide { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+.three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+.full-col { grid-column: 1 / -1; }
+
+/* ── 9. Section Panels ── */
+.panel {
+  border: 1px solid var(--gray-lt); border-radius: 2px;
+  background: var(--white); margin-bottom: 20px;
+}
+.panel-header {
+  padding: 12px 16px; border-bottom: 1px solid var(--gray-lt);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.panel-title {
+  font-size: 13px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.6px; color: var(--black);
+}
+.panel-subtitle { font-size: 12px; color: var(--gray-md); }
+.panel-body { padding: 16px; }
+.chart-wrap { position: relative; height: 220px; }
+.chart-wrap.tall { height: 300px; }
+
+/* ── 10. Tables ── */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th {
+  background: var(--gray-hd); text-align: left;
+  padding: 9px 12px; font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.6px;
+  color: var(--gray-dk); border-bottom: 1px solid var(--gray-lt);
+}
+td {
+  padding: 9px 12px; border-bottom: 1px solid var(--gray-lt);
+  color: var(--black); vertical-align: middle;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--gray-bg); }
+
+/* ── 11. Status Pills / Badges ── */
+.pill {
+  display: inline-block; padding: 2px 10px; border-radius: 2px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.4px;
+  text-transform: uppercase; border: 1px solid currentColor;
+}
+.pill.active     { color: var(--green); border-color: #A5D6A7; background: #F1F8E9; }
+.pill.suspicious { color: var(--orange); border-color: #FFCC80; background: #FFF3E0; }
+.pill.quarantined{ color: var(--red); border-color: #EF9A9A; background: #FFEBEE; }
+.pill.monitor    { color: var(--gray-dk); border-color: var(--gray-lt); background: var(--gray-bg); }
+.pill.alert      { color: var(--orange); border-color: #FFCC80; background: #FFF3E0; }
+.pill.active_block{ color: var(--red); border-color: #EF9A9A; background: #FFEBEE; }
+.pill.info       { color: var(--gray-dk); border-color: var(--gray-lt); }
+.pill.warning    { color: var(--orange); border-color: #FFCC80; background: #FFF3E0; }
+.pill.critical   { color: var(--red); border-color: #EF9A9A; background: #FFEBEE; }
+.pill.best       { color: var(--green); border-color: #A5D6A7; background: #F1F8E9; }
+.pill.normal     { color: var(--gray-dk); border-color: var(--gray-lt); }
+
+/* ── 12. Progress Bar ── */
+.progress-wrap { background: var(--gray-lt); height: 6px; border-radius: 2px; overflow: hidden; margin-top: 4px; }
+.progress-fill  { height: 100%; background: var(--black); border-radius: 2px; transition: width 0.4s ease; }
+
+/* ── 13. Security Event Log ── */
+.event-log { max-height: 260px; overflow-y: auto; }
+.event-log::-webkit-scrollbar { width: 4px; }
+.event-log::-webkit-scrollbar-thumb { background: var(--gray-lt); border-radius: 2px; }
+
+/* ── 14. Large Posture Display ── */
+.posture-display { text-align: center; padding: 20px; }
+.posture-label {
+  font-size: 32px; font-weight: 800; letter-spacing: 1px;
+  color: var(--black); text-transform: uppercase;
+}
+.posture-label.alert     { color: var(--orange); }
+.posture-label.active_block { color: var(--red); }
+
+/* ── 15. Toast Banner ── */
+#toast-banner {
+  display: none; position: fixed; top: var(--header); left: 0; right: 0;
+  background: var(--black); color: var(--white);
+  text-align: center; padding: 10px 20px; z-index: 300;
+  font-size: 14px; font-weight: 600;
+}
+
+/* ── 16. Utility ── */
+.text-muted   { color: var(--gray-md); }
+.text-sm      { font-size: 12px; }
+.text-mono    { font-family: monospace; font-size: 12px; }
+.mb-12        { margin-bottom: 12px; }
+.mb-20        { margin-bottom: 20px; }
+.flex-row     { display: flex; align-items: center; gap: 8px; }
+.spacer       { flex: 1; }
+
+/* ── 17. Responsive ── */
+@media (max-width: 900px) {
+  .sidebar { width: 0; overflow: hidden; border: none; }
+  .main { margin-left: 0; padding: 16px; }
+  .two-col, .two-col-wide, .three-col { grid-template-columns: 1fr; }
+  .kpi-row { flex-wrap: wrap; }
+  .kpi-card { flex: 1 1 45%; }
+}
+
+/* ── 18. Wizard / Forms ── */
+.form-group { margin-bottom: 18px; }
+.form-label {
+  display: block; font-size: 12px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--gray-dk); margin-bottom: 6px;
+}
+.form-select, .form-input {
+  width: 100%; padding: 8px 10px; border: 1px solid var(--gray-lt);
+  border-radius: 2px; font-size: 14px; font-family: var(--font);
+  background: var(--white); color: var(--black);
+  appearance: none; outline: none;
+}
+.form-select:focus, .form-input:focus { border-color: var(--black); }
+.form-hint { font-size: 11px; color: var(--gray-md); margin-top: 4px; }
+.form-check {
+  display: flex; align-items: center; gap: 8px;
+  cursor: pointer; font-size: 13px; color: var(--black);
+}
+.form-check input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer; }
+
+.config-summary {
+  font-size: 13px; color: var(--gray-dk);
+  background: var(--gray-bg); border: 1px solid var(--gray-lt);
+  border-radius: 2px; padding: 12px 16px; line-height: 1.9;
+  white-space: pre-wrap; font-family: monospace;
+}
+
+.wizard-alert {
+  padding: 10px 16px; border-radius: 2px; margin-bottom: 16px;
+  font-size: 13px; font-weight: 600;
+  border: 1px solid #A5D6A7; background: #F1F8E9; color: var(--green);
+}
+.wizard-alert.error { border-color: #EF9A9A; background: #FFEBEE; color: var(--red); }
+
+/* ── 19. Status Pill ── */
+.status-pill {
+  text-align: center; font-size: 10px; font-weight: 700;
+  letter-spacing: 1px; text-transform: uppercase; padding: 4px 0;
+  border: 1px solid var(--gray-lt); border-radius: 2px; margin-bottom: 10px;
+  color: var(--gray-md);
+}
+.status-pill.configured { color: var(--green); border-color: #A5D6A7; background: #F1F8E9; }
+.status-pill.running    { color: var(--orange); border-color: #FFCC80; background: #FFF3E0; }
+.status-pill.complete   { color: var(--green); border-color: #A5D6A7; background: #F1F8E9; }
+.status-pill.error      { color: var(--red); border-color: #EF9A9A; background: #FFEBEE; }
+
+/* ── 20. Radio Card Groups ── */
+.radio-group {
+  display: flex; flex-direction: column; gap: 8px;
+}
+
+.radio-card {
+  display: flex; align-items: flex-start; gap: 10px;
+  border: 1px solid var(--gray-lt); border-radius: 2px;
+  padding: 10px 12px; cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  background: var(--white);
+}
+.radio-card:hover { border-color: var(--gray-md); background: var(--gray-bg); }
+.radio-card input[type="radio"] { margin-top: 2px; flex-shrink: 0; }
+.radio-card input[type="radio"]:checked + .radio-content .radio-title { color: var(--black); font-weight: 700; }
+.radio-card:has(input[type="radio"]:checked) {
+  border-color: var(--black); background: #F5F5F5;
+}
+.radio-title { font-size: 13px; font-weight: 600; color: var(--gray-dk); }
+.radio-hint  { font-size: 11px; color: var(--gray-md); margin-top: 2px; }
+.mode-badge  {
+  display: inline-block; font-size: 9px; font-weight: 700;
+  background: var(--black); color: var(--white);
+  padding: 1px 5px; border-radius: 2px; margin-left: 6px;
+  letter-spacing: 0.5px; vertical-align: middle; text-transform: uppercase;
+}
+

@@ -8,6 +8,8 @@ with minimal processing cost.
 import hashlib
 import json
 import time
+import threading
+from queue import Queue
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from dataclasses import dataclass, asdict
@@ -450,22 +452,57 @@ class SmartContract:
 
 
 class AuditLogger:
-    """High-level audit logger using blockchain"""
+    """High-level audit logger using blockchain with asynchronous support"""
     
     def __init__(self, blockchain: Blockchain, smart_contract: SmartContract):
         """
-        Initialize audit logger
-        
-        Args:
-            blockchain: Blockchain instance
-            smart_contract: SmartContract instance
+        Initialize audit logger with background processing
         """
         self.blockchain = blockchain
         self.smart_contract = smart_contract
-    
+        self.tx_queue = Queue()
+        
+        # Start background worker
+        self._stop_event = threading.Event()
+        self.worker_thread = threading.Thread(target=self._process_queue, daemon=True)
+        self.worker_thread.start()
+        
+        logger.info("AuditLogger initialized with asynchronous worker thread")
+
+    def _process_queue(self):
+        """Background worker thread to process blockchain transactions"""
+        while not self._stop_event.is_set():
+            try:
+                # Wait for a transaction from the queue (timeout to check stop_event)
+                try:
+                    data = self.tx_queue.get(timeout=1.0)
+                except:
+                    continue
+                
+                # Logic: if data has 'contract_event', use smart contract, else standard block
+                if isinstance(data, dict):
+                    if data.get('log_type') == 'security_event':
+                        self.smart_contract.log_security_event(
+                            event_type=data['event_type'],
+                            node_id=data['node_id'],
+                            details=data['details']
+                        )
+                    else:
+                        self.blockchain.add_block(data)
+                        
+                self.tx_queue.task_done()
+            except Exception as e:
+                logger.error(f"Error in AuditLogger worker: {e}")
+                continue
+
+    def stop(self):
+        """Stop the background worker gracefully"""
+        self._stop_event.set()
+        self.worker_thread.join(timeout=2.0)
+
     def log_fl_round_start(self, round_number: int, participating_nodes: List[str]):
-        """Log start of FL round"""
-        self.blockchain.add_block({
+        """Log start of FL round (Asynchronous)"""
+        self.tx_queue.put({
             "type": "fl_round_start",
             "round_number": round_number,
             "participating_nodes": participating_nodes,
@@ -479,8 +516,8 @@ class AuditLogger:
         global_model_hash: str,
         metrics: Dict[str, float]
     ):
-        """Log completion of FL round"""
-        self.blockchain.add_block({
+        """Log completion of FL round (Asynchronous)"""
+        self.tx_queue.put({
             "type": "fl_round_complete",
             "round_number": round_number,
             "global_model_hash": global_model_hash,
@@ -495,25 +532,26 @@ class AuditLogger:
         severity: str,
         details: Dict[str, Any]
     ):
-        """Log anomaly detection"""
-        self.smart_contract.log_security_event(
-            event_type="anomaly_detected",
-            node_id=node_id,
-            details={
+        """Log anomaly detection (Asynchronous)"""
+        self.tx_queue.put({
+            "log_type": "security_event",
+            "event_type": "anomaly_detected",
+            "node_id": node_id,
+            "details": {
                 "anomaly_type": anomaly_type,
                 "severity": severity,
                 **details
             }
-        )
-    
+        })
+
     def log_attack_detected(
         self,
         attack_type: str,
         source_info: Dict[str, Any],
         mitigation_action: str
     ):
-        """Log DDoS attack detection"""
-        self.blockchain.add_block({
+        """Log DDoS attack detection (Asynchronous)"""
+        self.tx_queue.put({
             "type": "attack_detected",
             "attack_type": attack_type,
             "source_info": source_info,
@@ -527,14 +565,7 @@ class AuditLogger:
         end_time: Optional[float] = None
     ) -> Dict[str, Any]:
         """
-        Generate comprehensive audit report
-        
-        Args:
-            start_time: Report start time
-            end_time: Report end time
-            
-        Returns:
-            Audit report dictionary
+        Generate comprehensive audit report (Synchronous)
         """
         blocks = self.blockchain.query(start_time=start_time, end_time=end_time)
         

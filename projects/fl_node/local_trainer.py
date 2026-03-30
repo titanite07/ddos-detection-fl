@@ -110,6 +110,12 @@ class LocalTrainer:
                 "val_accuracy": float(history.history.get('val_accuracy', [0])[-1])
             })
         
+        # Include weights in the update for the aggregation server
+        update = {
+            "metrics": metrics,
+            "weights": self.get_model_weights()
+        }
+        
         # Store in history
         self.training_history.append(history.history)
         self.round_metrics[round_number] = metrics
@@ -120,7 +126,7 @@ class LocalTrainer:
             f"Accuracy: {metrics['train_accuracy']:.4f}"
         )
         
-        return metrics
+        return update
     
     def get_model_weights(self) -> List[np.ndarray]:
         """
@@ -141,6 +147,26 @@ class LocalTrainer:
         self.model.set_weights(weights)
         logger.info(f"[Node {self.node_id}] Updated model weights from global model")
     
+    def set_learning_rate(self, lr: float):
+        """
+        Update model learning rate (Keras 3.x compatible)
+        
+        Args:
+            lr: New learning rate value
+        """
+        try:
+            # Modern Keras 3.x / TF 2.x
+            self.model.optimizer.learning_rate.assign(lr)
+            logger.info(f"[Node {self.node_id}] Learning rate updated to {lr:.6f}")
+        except AttributeError:
+            # Legacy Keras/TF
+            try:
+                import tensorflow.keras.backend as K
+                K.set_value(self.model.optimizer.lr, lr)
+                logger.info(f"[Node {self.node_id}] Learning rate updated to {lr:.6f} (legacy)")
+            except Exception as e:
+                logger.error(f"Failed to update learning rate: {e}")
+
     def compute_weight_delta(
         self,
         initial_weights: List[np.ndarray]

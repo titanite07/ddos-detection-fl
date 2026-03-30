@@ -1,382 +1,443 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FL-DDoS Monitoring Dashboard</title>
-    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>FL-DDoS Defense — Monitoring Console</title>
+  <meta name="description" content="Federated Zero-Trust DDoS Defense System — Real-time monitoring and audit console"/>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}"/>
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
 
-      body {
-        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: #fff;
-        padding: 20px;
-      }
+<!-- ── Toast Banner ──────────────────────────────────────── -->
+<div id="toast-banner"></div>
 
-      .container {
-        max-width: 1400px;
-        margin: 0 auto;
-      }
+<!-- ── Global Header ─────────────────────────────────────── -->
+<header class="app-header">
+  <span class="title">Federated Zero‑Trust DDoS Defense — Monitoring Console</span>
+  <div class="header-meta">
+    <div class="conn-indicator">
+      <div class="conn-dot" id="conn-dot"></div>
+      <span id="conn-text">Connecting…</span>
+    </div>
+    <span class="env-badge" id="env-badge">IDLE</span>
+  </div>
+</header>
 
-      .header {
-        text-align: center;
-        margin-bottom: 30px;
-      }
+<!-- ── App Shell ─────────────────────────────────────────── -->
+<div class="app-shell">
 
-      .header h1 {
-        font-size: 2.5em;
-        margin-bottom: 10px;
-      }
-
-      .status-bar {
-        background: rgba(255, 255, 255, 0.1);
-        backdrop-filter: blur(10px);
-        border-radius: 15px;
-        padding: 20px;
-        margin-bottom: 30px;
-        display: flex;
-        justify-content: space-around;
-        flex-wrap: wrap;
-      }
-
-      .metric {
-        text-align: center;
-        padding: 10px 20px;
-      }
-
-      .metric-value {
-        font-size: 2em;
-        font-weight: bold;
-        margin: 5px 0;
-      }
-
-      .metric-label {
-        font-size: 0.9em;
-        opacity: 0.8;
-      }
-
-      .grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-        gap: 20px;
-        margin-bottom: 20px;
-      }
-
-      .card {
-        background: rgba(255, 255, 255, 0.1);
-        backdrop-filter: blur(10px);
-        border-radius: 15px;
-        padding: 20px;
-      }
-
-      .card h2 {
-        margin-bottom: 15px;
-        font-size: 1.3em;
-      }
-
-      .node {
-        background: rgba(255, 255, 255, 0.1);
-        border-radius: 10px;
-        padding: 15px;
-        margin-bottom: 10px;
-      }
-
-      .node-header {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 10px;
-      }
-
-      .node-status {
-        display: inline-block;
-        padding: 5px 15px;
-        border-radius: 20px;
-        font-size: 0.85em;
-      }
-
-      .status-active {
-        background: #4caf50;
-      }
-
-      .status-suspicious {
-        background: #ff9800;
-      }
-
-      .status-removed {
-        background: #f44336;
-      }
-
-      .progress-bar {
-        background: rgba(255, 255, 255, 0.2);
-        border-radius: 10px;
-        height: 8px;
-        margin-top: 10px;
-        overflow: hidden;
-      }
-
-      .progress-fill {
-        background: #4caf50;
-        height: 100%;
-        transition: width 0.5s ease;
-      }
-
-      .controls {
-        text-align: center;
-        margin: 20px 0;
-      }
-
-      button {
-        background: rgba(255, 255, 255, 0.2);
-        border: 2px solid #fff;
-        color: #fff;
-        padding: 15px 30px;
-        border-radius: 10px;
-        font-size: 1.1em;
-        cursor: pointer;
-        margin: 0 10px;
-        transition: all 0.3s ease;
-      }
-
-      button:hover {
-        background: rgba(255, 255, 255, 0.3);
-        transform: translateY(-2px);
-      }
-
-      .alert {
-        background: #f44336;
-        border-radius: 10px;
-        padding: 15px;
-        margin: 10px 0;
-        animation: pulse 2s infinite;
-      }
-
-      @keyframes pulse {
-        0%,
-        100% {
-          opacity: 1;
-        }
-        50% {
-          opacity: 0.7;
-        }
-      }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <div class="header">
-        <h1>🛡️ FL-DDoS Monitoring Dashboard</h1>
-        <p>Real-time Federated Learning System Monitor</p>
-      </div>
-
-      <div class="status-bar">
-        <div class="metric">
-          <div class="metric-label">Current Round</div>
-          <div class="metric-value" id="current-round">0</div>
-        </div>
-        <div class="metric">
-          <div class="metric-label">Accuracy</div>
-          <div class="metric-value" id="accuracy">0.00%</div>
-        </div>
-        <div class="metric">
-          <div class="metric-label">Loss</div>
-          <div class="metric-value" id="loss">0.00</div>
-        </div>
-        <div class="metric">
-          <div class="metric-label">Active Nodes</div>
-          <div class="metric-value" id="active-nodes">0</div>
-        </div>
-        <div class="metric">
-          <div class="metric-label">Attacks Detected</div>
-          <div class="metric-value" id="attacks">0</div>
-        </div>
-      </div>
-
-      <div class="controls">
-        <button onclick="startTraining()">▶️ Start Training</button>
-        <button onclick="stopTraining()">⏸️ Stop Training</button>
-      </div>
-
-      <div class="grid">
-        <div class="card">
-          <h2>📊 Training Progress</h2>
-          <canvas id="accuracyChart"></canvas>
-        </div>
-
-        <div class="card">
-          <h2>🖥️ Node Status</h2>
-          <div id="nodes-container"></div>
-        </div>
-      </div>
-
-      <div id="alerts-container"></div>
+  <!-- ── Sidebar ──────────────────────────────────────────── -->
+  <nav class="sidebar">
+    <div class="sidebar-section-label">Setup</div>
+    <div class="nav-item" data-page="wizard">
+      <span class="nav-icon">⚙</span> Configure
     </div>
 
-    <script>
-      const socket = io();
+    <div class="sidebar-section-label">Monitoring</div>
+    <div class="nav-item" data-page="overview">
+      <span class="nav-icon">◈</span> Overview
+    </div>
+    <div class="nav-item" data-page="fl">
+      <span class="nav-icon">⊞</span> FL Engine
+    </div>
+    <div class="nav-item" data-page="nodes">
+      <span class="nav-icon">⊡</span> Nodes
+    </div>
+    <div class="nav-item" data-page="agents">
+      <span class="nav-icon">🤖</span> AI Agents
+    </div>
+    <div class="nav-item" data-page="security">
+      <span class="nav-icon">⊘</span> Security
+    </div>
+    <div class="nav-item" data-page="models">
+      <span class="nav-icon">◫</span> Models
+    </div>
+    <div class="nav-item" data-page="blockchain">
+      <span class="nav-icon">⛓</span> Blockchain
+    </div>
 
-      // Chart setup
-      const ctx = document.getElementById("accuracyChart").getContext("2d");
-      const accuracyChart = new Chart(ctx, {
-        type: "line",
-        data: {
-          labels: [],
-          datasets: [
-            {
-              label: "Accuracy",
-              data: [],
-              borderColor: "#4CAF50",
-              backgroundColor: "rgba(76, 175, 80, 0.1)",
-              tension: 0.4,
-            },
-            {
-              label: "Loss",
-              data: [],
-              borderColor: "#f44336",
-              backgroundColor: "rgba(244, 67, 54, 0.1)",
-              tension: 0.4,
-              yAxisID: "y1",
-            },
-          ],
-        },
-        options: {
-          responsive: true,
-          interaction: {
-            mode: "index",
-            intersect: false,
-          },
-          scales: {
-            y: {
-              type: "linear",
-              display: true,
-              position: "left",
-              ticks: { color: "#fff" },
-              grid: { color: "rgba(255,255,255,0.1)" },
-            },
-            y1: {
-              type: "linear",
-              display: true,
-              position: "right",
-              ticks: { color: "#fff" },
-              grid: { drawOnChartArea: false, color: "rgba(255,255,255,0.1)" },
-            },
-            x: {
-              ticks: { color: "#fff" },
-              grid: { color: "rgba(255,255,255,0.1)" },
-            },
-          },
-          plugins: {
-            legend: {
-              labels: { color: "#fff" },
-            },
-          },
-        },
-      });
+    <div class="sidebar-controls">
+      <div id="status-pill" class="status-pill idle">IDLE</div>
+      <button class="btn btn-danger btn-full" id="btn-stop" style="display:none;">⏹ Stop Training</button>
+    </div>
+  </nav>
 
-      // Socket event handlers
-      socket.on("connect", function () {
-        console.log("Connected to dashboard");
-      });
+  <!-- ── Main Content ──────────────────────────────────────── -->
+  <main class="main">
 
-      socket.on("fl_update", function (data) {
-        updateDashboard(data);
-      });
+    <!-- ═══════════ PAGE: WIZARD ═══════════ -->
+    <section class="page active" id="page-wizard">
+      <h1 class="page-title">Training Configuration</h1>
+      <p class="page-subtitle">Select dataset, model architecture, and federated learning parameters before starting the real pipeline.</p>
 
-      socket.on("training_complete", function (data) {
-        alert(data.message);
-      });
+      <div id="wizard-alert" class="wizard-alert" style="display:none;"></div>
 
-      function updateDashboard(data) {
-        // Update metrics
-        document.getElementById("current-round").textContent =
-          data.current_round + "/" + data.total_rounds;
-        document.getElementById("accuracy").textContent =
-          (data.accuracy * 100).toFixed(2) + "%";
-        document.getElementById("loss").textContent = data.loss.toFixed(4);
+      <form id="config-form" onsubmit="submitConfig(event)">
+        <div class="two-col">
 
-        // Count active nodes
-        const activeCount = Object.values(data.nodes).filter(
-          (n) => n.status === "active"
-        ).length;
-        document.getElementById("active-nodes").textContent = activeCount;
-        document.getElementById("attacks").textContent = data.attacks_detected;
+          <!-- Left column -->
+          <div>
+            <div class="panel mb-20">
+              <div class="panel-header"><span class="panel-title">Data Source Mode</span></div>
+              <div class="panel-body">
+                <div class="form-group">
+                  <label class="form-label">Traffic Source</label>
+                  <div class="radio-group" id="radio-data-mode">
+                    <label class="radio-card">
+                      <input type="radio" name="data_mode" value="static" checked/>
+                      <div class="radio-content">
+                        <div class="radio-title">Static</div>
+                        <div class="radio-hint">Pre-processed .npz dataset files — fast, reproducible</div>
+                      </div>
+                    </label>
+                    <label class="radio-card">
+                      <input type="radio" name="data_mode" value="live"/>
+                      <div class="radio-content">
+                        <div class="radio-title">Live Traffic</div>
+                        <div class="radio-hint">Real-time Scapy packet capture — requires admin &amp; active traffic</div>
+                      </div>
+                    </label>
+                    <label class="radio-card">
+                      <input type="radio" name="data_mode" value="hybrid"/>
+                      <div class="radio-content">
+                        <div class="radio-title">Hybrid <span class="mode-badge">75% Live / 25% Static</span></div>
+                        <div class="radio-hint">Blends live capture with static baseline — requires admin &amp; Scapy</div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
 
-        // Update chart
-        if (data.history && data.history.length > 0) {
-          accuracyChart.data.labels = data.history.map((h) => "R" + h.round);
-          accuracyChart.data.datasets[0].data = data.history.map(
-            (h) => h.accuracy
-          );
-          accuracyChart.data.datasets[1].data = data.history.map((h) => h.loss);
-          accuracyChart.update();
-        }
+                <div class="form-group" id="dataset-group">
+                  <label class="form-label" for="sel-dataset">Reference Dataset</label>
+                  <select id="sel-dataset" name="dataset" class="form-select">
+                    <option value="">Loading…</option>
+                  </select>
+                  <div class="form-hint" id="dataset-hint">Used as the static data source for training.</div>
+                </div>
+              </div>
+            </div>
 
-        // Update nodes
-        updateNodes(data.nodes);
+            <div class="panel mb-20">
+              <div class="panel-header"><span class="panel-title">Model Architecture</span></div>
+              <div class="panel-body">
+                <div class="form-group">
+                  <label class="form-label">Architecture</label>
+                  <div class="radio-group" id="radio-model">
+                    <!-- populated by JS from /api/wizard_options -->
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
 
-        // Show alerts for attacks
-        if (data.attacks_detected > 0 && !document.querySelector(".alert")) {
-          showAlert("⚠️ Byzantine node detected and removed!");
-        }
-      }
+          <!-- Right column -->
+          <div>
+            <div class="panel mb-20">
+              <div class="panel-header"><span class="panel-title">Federated Learning Parameters</span></div>
+              <div class="panel-body">
+                <div class="form-group">
+                  <label class="form-label" for="inp-nodes">Number of FL Nodes</label>
+                  <input type="number" id="inp-nodes" name="num_nodes" class="form-input"
+                         min="2" max="8" value="3"/>
+                  <div class="form-hint">Simulated edge organizations (2–8)</div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="inp-rounds">FL Rounds</label>
+                  <input type="number" id="inp-rounds" name="num_rounds" class="form-input"
+                         min="3" max="50" value="10"/>
+                  <div class="form-hint">Total global aggregation rounds (3–50)</div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="inp-epochs">Local Epochs per Round</label>
+                  <input type="number" id="inp-epochs" name="epochs_per_round" class="form-input"
+                         min="1" max="10" value="3"/>
+                  <div class="form-hint">Epochs each node trains before aggregation (1–10)</div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="inp-timesteps">CNN-BiLSTM Timesteps</label>
+                  <input type="number" id="inp-timesteps" name="timesteps" class="form-input"
+                         min="5" max="20" value="10"/>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
 
-      function updateNodes(nodes) {
-        const container = document.getElementById("nodes-container");
-        container.innerHTML = "";
+        <!-- Options row -->
+        <div class="panel mb-20">
+          <div class="panel-header"><span class="panel-title">Advanced Options</span></div>
+          <div class="panel-body" style="display:flex;gap:40px;">
+            <label class="form-check">
+              <input type="checkbox" id="chk-iid" name="iid" checked/>
+              <span>IID Data Distribution (balanced across nodes)</span>
+            </label>
+            <label class="form-check">
+              <input type="checkbox" id="chk-fs" name="feature_selection"/>
+              <span>Apply Ensemble Feature Selection</span>
+            </label>
+          </div>
+        </div>
 
-        for (const [nodeId, node] of Object.entries(nodes)) {
-          const nodeDiv = document.createElement("div");
-          nodeDiv.className = "node";
-          nodeDiv.innerHTML = `
-                    <div class="node-header">
-                        <strong>${nodeId}</strong>
-                        <span class="node-status status-${node.status}">${
-            node.status
-          }</span>
-                    </div>
-                    <div>Trust: ${(node.trust_score * 100).toFixed(1)}%</div>
-                    <div>Samples: ${node.samples.toLocaleString()}</div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: ${
-                          node.trust_score * 100
-                        }%"></div>
-                    </div>
-                `;
-          container.appendChild(nodeDiv);
-        }
-      }
+        <!-- Summary + Submit -->
+        <div class="panel mb-20">
+          <div class="panel-header"><span class="panel-title">Configuration Summary</span></div>
+          <div class="panel-body">
+            <div id="config-summary" class="config-summary">Fill in the form above to preview your configuration.</div>
+          </div>
+        </div>
 
-      function startTraining() {
-        fetch("/api/start_training")
-          .then((r) => r.json())
-          .then((data) => {
-            console.log("Training started");
-          });
-      }
+        <div style="display:flex;gap:12px;">
+          <button type="submit" class="btn btn-primary">✓ Confirm &amp; Configure</button>
+          <button type="button" class="btn btn-primary" id="btn-start" disabled
+                  onclick="startTraining()" style="background:#1B5E20;border-color:#1B5E20;">
+            ▶ Start Training
+          </button>
+        </div>
+      </form>
+    </section>
 
-      function stopTraining() {
-        fetch("/api/stop_training")
-          .then((r) => r.json())
-          .then((data) => {
-            console.log("Training stopped");
-          });
-      }
+    <!-- ═══════════ PAGE: OVERVIEW ═══════════ -->
+    <section class="page" id="page-overview">
+      <h1 class="page-title">System Overview</h1>
+      <p class="page-subtitle">Real-time summary of all federated learning and security modules.</p>
 
-      function showAlert(message) {
-        const container = document.getElementById("alerts-container");
-        const alert = document.createElement("div");
-        alert.className = "alert";
-        alert.textContent = message;
-        container.appendChild(alert);
+      <div class="kpi-row">
+        <div class="kpi-card"><div class="kpi-value" id="kpi-round">0 / 0</div><div class="kpi-label">FL Round</div></div>
+        <div class="kpi-card"><div class="kpi-value" id="kpi-accuracy">—</div><div class="kpi-label">Global Accuracy</div></div>
+        <div class="kpi-card"><div class="kpi-value" id="kpi-loss">—</div><div class="kpi-label">Loss</div></div>
+        <div class="kpi-card"><div class="kpi-value" id="kpi-nodes">0</div><div class="kpi-label">Active Nodes</div></div>
+        <div class="kpi-card"><div class="kpi-value" id="kpi-posture">MONITOR</div><div class="kpi-label">Security Posture</div></div>
+        <div class="kpi-card"><div class="kpi-value" id="kpi-model">—</div><div class="kpi-label">Best Model</div></div>
+      </div>
 
-        setTimeout(() => alert.remove(), 5000);
-      }
-    </script>
-  </body>
+      <div class="two-col-wide">
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">Global Accuracy &amp; Loss Over Rounds</span>
+            <span class="panel-subtitle">Solid = Accuracy · Dashed = Loss</span>
+          </div>
+          <div class="panel-body"><div class="chart-wrap tall"><canvas id="chart-acc-loss"></canvas></div></div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:20px;">
+          <div class="panel">
+            <div class="panel-header"><span class="panel-title">Pipeline Log</span></div>
+            <div class="panel-body" style="padding:0;max-height:180px;overflow-y:auto;">
+              <table>
+                <thead><tr><th>Time</th><th>Level</th><th>Message</th></tr></thead>
+                <tbody id="overview-log-body">
+                  <tr><td colspan="3" class="text-muted text-sm" style="padding:12px;">No log entries.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-header"><span class="panel-title">Latest Security Events</span></div>
+            <div class="panel-body" style="padding:0;">
+              <table>
+                <thead><tr><th>Time</th><th>Level</th><th>Message</th></tr></thead>
+                <tbody id="overview-events-body">
+                  <tr><td colspan="3" class="text-muted text-sm" style="padding:12px;">No events.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ PAGE: FL ENGINE ═══════════ -->
+    <section class="page" id="page-fl">
+      <h1 class="page-title">Federated Learning Engine</h1>
+      <p class="page-subtitle">Round-by-round training metrics and aggregation strategy.</p>
+
+      <div class="kpi-row">
+        <div class="kpi-card"><div class="kpi-value" id="fl-current-round">—</div><div class="kpi-label">Current Round</div></div>
+        <div class="kpi-card"><div class="kpi-value" id="fl-accuracy">—</div><div class="kpi-label">Accuracy</div></div>
+        <div class="kpi-card"><div class="kpi-value" id="fl-loss">—</div><div class="kpi-label">Loss</div></div>
+        <div class="kpi-card"><div class="kpi-value" id="fl-active-nodes">—</div><div class="kpi-label">Active Nodes</div></div>
+        <div class="kpi-card"><div class="kpi-value" id="fl-strategy">FedAvg</div><div class="kpi-label">Aggregation</div></div>
+        <div class="kpi-card"><div class="kpi-value" id="fl-convergence">—</div><div class="kpi-label">Convergence</div></div>
+      </div>
+
+      <div class="two-col mb-20">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Accuracy Over Rounds</span></div>
+          <div class="panel-body"><div class="chart-wrap"><canvas id="chart-fl-acc"></canvas></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Loss Over Rounds</span></div>
+          <div class="panel-body"><div class="chart-wrap"><canvas id="chart-fl-loss"></canvas></div></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">Round History</span></div>
+        <div class="panel-body" style="padding:0;max-height:320px;overflow-y:auto;">
+          <table>
+            <thead><tr><th>Round</th><th>Accuracy</th><th>Loss</th><th>Strategy</th><th>Timestamp</th></tr></thead>
+            <tbody id="fl-history-body">
+              <tr><td colspan="5" class="text-muted text-sm" style="padding:12px;">No rounds yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ PAGE: NODES ═══════════ -->
+    <section class="page" id="page-nodes">
+      <h1 class="page-title">Distributed Node Monitor</h1>
+      <p class="page-subtitle">Real-time status for all federated learning worker nodes.</p>
+
+      <div class="panel mb-20">
+        <div class="panel-header"><span class="panel-title">Node Status Table</span></div>
+        <div class="panel-body" style="padding:0;overflow-x:auto;">
+          <table>
+            <thead>
+              <tr><th>Node ID</th><th>Role</th><th>Status</th><th>Trust Score</th>
+                  <th>Local Accuracy</th><th>Data Size</th><th>Rounds</th><th>Grad. Align.</th></tr>
+            </thead>
+            <tbody id="nodes-table-body">
+              <tr><td colspan="8" class="text-muted text-sm" style="padding:12px;">Start training to populate node data.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">Per-Node Local Accuracy</span></div>
+        <div class="panel-body"><div class="chart-wrap"><canvas id="chart-nodes-acc"></canvas></div></div>
+      </div>
+    </section>
+
+    <!-- ═══════════ PAGE: AI AGENTS ═══════════ -->
+    <section class="page" id="page-agents">
+      <h1 class="page-title">Multi-Agent AI Hub</h1>
+      <p class="page-subtitle">Decentralized LLM agents collaboratively managing security and optimization.</p>
+
+      <div class="kpi-row" style="margin-bottom:20px;">
+        <div class="kpi-card"><div class="kpi-value" id="agent-threat">MOCK</div><div class="kpi-label">Assessed Threat Level</div></div>
+        <div class="kpi-card"><div class="kpi-value" id="agent-strategy">FedAvg</div><div class="kpi-label">Active Strategy</div></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">Agentic Reasoning Log</span></div>
+        <div class="panel-body" style="padding:0;max-height:450px;overflow-y:auto;">
+          <table>
+            <thead><tr><th>Round</th><th>Security Assessment</th><th>Strategy Recommender</th><th>Explainability Engine</th></tr></thead>
+            <tbody id="agents-table-body">
+              <tr><td colspan="4" class="text-muted text-sm" style="padding:12px;">Waiting for multi-agent coordination…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ PAGE: SECURITY ═══════════ -->
+    <section class="page" id="page-security">
+      <h1 class="page-title">Zero-Trust Security Layer</h1>
+      <p class="page-subtitle">Byzantine detection, trust scoring, and quarantine management.</p>
+
+      <div class="two-col mb-20">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Current Security Posture</span></div>
+          <div class="panel-body">
+            <div class="posture-display">
+              <div class="posture-label" id="sec-posture-label">MONITOR</div>
+            </div>
+            <div style="margin-top:16px;">
+              <div class="flex-row mb-12">
+                <span class="text-muted">Threat Level:</span>
+                <strong id="sec-threat-val">0</strong> / 100
+              </div>
+              <div class="progress-wrap" style="height:10px;">
+                <div class="progress-fill" id="sec-threat-bar" style="width:0%"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Quarantined Nodes</span></div>
+          <div class="panel-body" style="padding:0;">
+            <table>
+              <thead><tr><th>Node ID</th><th>Reason</th><th>Action</th></tr></thead>
+              <tbody id="sec-quarantine-body">
+                <tr><td colspan="3" class="text-muted text-sm" style="padding:12px;">No quarantined nodes.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">Security &amp; Trust Event Log</span></div>
+        <div class="panel-body" style="padding:0;max-height:360px;overflow-y:auto;">
+          <table>
+            <thead><tr><th>Time</th><th>Level</th><th>Message</th><th>Node</th></tr></thead>
+            <tbody id="sec-events-body">
+              <tr><td colspan="4" class="text-muted text-sm" style="padding:12px;">No events.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ PAGE: MODELS ═══════════ -->
+    <section class="page" id="page-models">
+      <h1 class="page-title">Detection Model Performance</h1>
+      <p class="page-subtitle">Live metrics evaluated on test set every 5 rounds.</p>
+
+      <div class="panel mb-20">
+        <div class="panel-header"><span class="panel-title">Model Metrics</span></div>
+        <div class="panel-body" style="padding:0;">
+          <table>
+            <thead><tr><th>Model</th><th>Accuracy</th><th>F1-Score</th><th>Precision</th><th>Recall</th><th>Status</th></tr></thead>
+            <tbody id="models-table-body">
+              <tr><td colspan="6" class="text-muted text-sm" style="padding:12px;">Start training to populate model metrics.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Accuracy Over Rounds</span>
+          <span class="panel-subtitle">Solid = CNN-BiLSTM</span>
+        </div>
+        <div class="panel-body"><div class="chart-wrap tall"><canvas id="chart-models"></canvas></div></div>
+      </div>
+    </section>
+
+    <!-- ═══════════ PAGE: BLOCKCHAIN ═══════════ -->
+    <section class="page" id="page-blockchain">
+      <h1 class="page-title">Blockchain Audit Ledger</h1>
+      <p class="page-subtitle">Immutable on-chain record of all FL rounds, trust events, and security actions.</p>
+
+      <div class="kpi-row mb-20">
+        <div class="kpi-card"><div class="kpi-value" id="bc-total">0</div><div class="kpi-label">Total Blocks</div></div>
+        <div class="kpi-card"><div class="kpi-value positive" id="bc-health">SYNCED</div><div class="kpi-label">Ledger Health</div></div>
+        <div class="kpi-card"><div class="kpi-value text-mono" style="font-size:13px;" id="bc-hash">—</div><div class="kpi-label">Latest Hash</div></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">Transaction Feed (Last 20 Blocks)</span></div>
+        <div class="panel-body" style="padding:0;max-height:500px;overflow-y:auto;">
+          <table>
+            <thead><tr><th>Block</th><th>Type</th><th>Hash</th><th>Preview</th><th>Time</th></tr></thead>
+            <tbody id="bc-table-body">
+              <tr><td colspan="5" class="text-muted text-sm" style="padding:12px;">No transactions yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
 </html>
