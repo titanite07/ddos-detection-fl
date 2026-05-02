@@ -47,13 +47,14 @@ function navigateTo(pageId) {
 
 function renderCurrentPage() {
   switch (STATE.currentPage) {
-    case 'overview':   renderOverview();   break;
-    case 'fl':         renderFL();         break;
-    case 'nodes':      renderNodes();      break;
-    case 'agents':     renderAgents();     break;
-    case 'security':   renderSecurity();   break;
-    case 'models':     renderModels();     break;
-    case 'blockchain': renderBlockchain(); break;
+    case 'overview':     renderOverview();     break;
+    case 'fl':           renderFL();           break;
+    case 'nodes':        renderNodes();        break;
+    case 'agents':       renderAgents();       break;
+    case 'security':     renderSecurity();     break;
+    case 'models':       renderModels();       break;
+    case 'blockchain':   renderBlockchain();   break;
+    case 'livetesting':  renderLiveTesting();  break;
   }
 }
 
@@ -67,6 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initCharts();
   connectSocket();
   loadWizardOptions();
+  ltLoadProfiles();   // pre-load synthetic profiles for Live Testing
   // Update config summary on numeric field or checkbox changes
   ['inp-nodes','inp-rounds','inp-epochs','inp-timesteps'].forEach(id =>
     document.getElementById(id)?.addEventListener('input', updateConfigSummary)
@@ -301,11 +303,55 @@ function initCharts() {
   const c5 = document.getElementById('chart-models');
   if (c5) charts.models = new Chart(c5, {
     type: 'line',
-    data: { labels: [], datasets: [
-      { label: 'CNN-BiLSTM (Global)', data: [], borderColor: '#111', pointStyle: 'circle',
-        pointRadius: 3, tension: 0.3, borderWidth: 2 }
-    ]},
-    options: baseOpts()
+    data: { labels: [], datasets: [] },
+    options: baseOpts({
+      plugins: {
+        legend: { display: true, labels: { color: '#111', font: { size: 12 } } }
+      }
+    })
+  });
+
+  const c6 = document.getElementById('chart-model-radar');
+  if (c6) charts.modelRadar = new Chart(c6, {
+    type: 'radar',
+    data: {
+      labels: ['Accuracy', 'Training Speed', 'Memory Efficiency', 'Adversarial Robustness', 'Interpretability', 'Fed. Suitability'],
+      datasets: [
+        {
+          label: 'CNN-BiLSTM',
+          data: [9, 9, 9, 6, 4, 9],
+          borderColor: '#111111', backgroundColor: 'rgba(17,17,17,0.08)',
+          pointBackgroundColor: '#111111', borderWidth: 2, pointRadius: 4,
+        },
+        {
+          label: 'Transformer',
+          data: [7, 6, 7, 6, 7, 7],
+          borderColor: '#555555', backgroundColor: 'rgba(85,85,85,0.06)',
+          pointBackgroundColor: '#555555', borderWidth: 2, pointRadius: 4,
+          borderDash: [5, 3],
+        },
+        {
+          label: 'Hybrid Ensemble',
+          data: [9, 4, 4, 9, 4, 7],
+          borderColor: '#999999', backgroundColor: 'rgba(153,153,153,0.06)',
+          pointBackgroundColor: '#999999', borderWidth: 2, pointRadius: 4,
+          borderDash: [2, 2],
+        },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { display: true, position: 'bottom', labels: { color: '#111', font: { size: 11 }, boxWidth: 16 } } },
+      scales: {
+        r: {
+          angleLines: { color: '#DDD' },
+          grid: { color: '#DDD' },
+          pointLabels: { color: '#444', font: { size: 11 } },
+          ticks: { display: false, stepSize: 2 },
+          min: 0, max: 10,
+        }
+      }
+    }
   });
 }
 
@@ -375,11 +421,13 @@ function connectSocket() {
   socket.on('training_complete', data => {
     STATE.status = 'complete';
     STATE.fl.is_training = false;
+    if (data.model_arch_key) STATE.fl.model_arch_key = data.model_arch_key;
     setStatusPill('complete');
     setEnvBadge('COMPLETE');
     document.getElementById('btn-stop').style.display = 'none';
     document.getElementById('btn-start').disabled = false;
     showToast(`✓ Training complete — Final accuracy: ${(data.final_accuracy * 100).toFixed(2)}% | Best Model: ${data.best_model}`);
+    ltUpdateModelBanner();
   });
 
   socket.on('pipeline_error', data => {
@@ -390,6 +438,10 @@ function connectSocket() {
     document.getElementById('btn-start').disabled = false;
     showToast(`✗ Pipeline error: ${data.error}`);
     console.error('Pipeline error:', data.error);
+  });
+
+  socket.on('live_capture_result', data => {
+    ltHandleCaptureResult(data);
   });
 
   // Stop button
@@ -433,7 +485,7 @@ function showToast(msg) {
   t.textContent = msg; t.style.display = 'block';
   setTimeout(() => { t.style.display = 'none'; }, 9000);
 }
-function pct(v)  { return v != null && v !== 0 ? (v * 100).toFixed(2) + '%' : '—'; }
+function pct(v)  { return v != null ? (v === 0 ? '0.00%' : (v * 100).toFixed(2) + '%') : '—'; }
 function fmt4(v) { return v != null ? parseFloat(v).toFixed(4) : '—'; }
 
 // ══════════════════════════════════════════════
@@ -463,8 +515,45 @@ function updateAllCharts() {
     charts.flLoss.update();
   }
   if (charts.models) {
+    const m   = STATE.models || {};
+    const activeKey = (STATE.fl.model_arch_key || '').toLowerCase();  // e.g. 'cnn_bilstm'
+    const modelDefs = [
+      { key: 'cnn_bilstm',  label: 'CNN-BiLSTM',     color: '#111111', dash: [] },
+      { key: 'transformer', label: 'Transformer',     color: '#555555', dash: [6, 3] },
+      { key: 'hybrid',      label: 'Hybrid Ensemble', color: '#999999', dash: [2, 2] },
+    ];
+    const datasets = modelDefs
+      .filter(d => m[d.key] && (m[d.key].trained === true || m[d.key].accuracy > 0))
+      .map(d => ({
+        label: d.label,
+        data: labels.map((lbl, i) => {
+          const rNumber = h[i]?.round; // The current round number on the X-axis
+          
+          if (d.key === activeKey) {
+            // Active arch: use per-round history from the current session
+            return h[i]?.accuracy ?? null;
+          }
+          
+          // Previously trained arch: find its accuracy at this specific round number
+          const histCurve = m[d.key].history || [];
+          const match = histCurve.find(x => x.round === rNumber);
+          if (match) {
+            return match.accuracy;
+          }
+          
+          // If no specific historical round match found, but model is trained,
+          // it likely already reached its final accuracy for any later rounds.
+          return m[d.key].accuracy;
+        }),
+        borderColor: d.color,
+        borderDash: d.dash,
+        pointRadius: (d.key === activeKey && d.dash.length === 0) ? 3 : 0,
+        tension: 0.3,
+        borderWidth: 2,
+        fill: false,
+      }));
     charts.models.data.labels = labels;
-    charts.models.data.datasets[0].data = acc;
+    charts.models.data.datasets = datasets;
     charts.models.update();
   }
 }
@@ -655,38 +744,36 @@ function renderSecurity() {
   }
 }
 
-// ══════════════════════════════════════════════
+// ==============================================
 // 12. MODELS
-// ══════════════════════════════════════════════
+// ==============================================
 function renderModels() {
   const m    = STATE.models || {};
   const best = (m.best_model || '').toLowerCase();
-  
-  const labelsMap = {
-    cnn_bilstm: 'CNN-BiLSTM',
-    transformer: 'Transformer',
-    hybrid: 'Hybrid Ensemble'
-  };
 
-  // Get dynamic architectures tracked in state (exclude the 'best_model' tracking key)
-  const trackedKeys = Object.keys(m).filter(k => k !== 'best_model');
-  const rows = trackedKeys.map(k => [k, labelsMap[k] || k.toUpperCase()]);
-  
+  const ALL_MODELS = [
+    { key: 'cnn_bilstm',  label: 'CNN-BiLSTM' },
+    { key: 'transformer', label: 'Transformer' },
+    { key: 'hybrid',      label: 'Hybrid Ensemble' },
+  ];
+
   const tb = document.getElementById('models-table-body');
   if (tb) {
-    tb.innerHTML = rows.map(([key, label]) => {
+    tb.innerHTML = ALL_MODELS.map(({ key, label }) => {
       const d = m[key] || {};
-      const isBest = best.includes(key.replace('_', '')) || best === label.toLowerCase() || rows.length === 1; 
-      
+      const trained = d.trained === true;
+      const isBest  = trained && (best.includes(key.replace('_bilstm','').replace('_ensemble','')) || m.best_model === label);
+      const statusClass = trained ? (isBest ? 'best' : 'active') : 'normal';
+      const statusText  = trained ? (isBest ? 'BEST' : 'TRAINED') : 'NOT TRAINED';
       return `<tr>
         <td><strong>${label}</strong></td>
-        <td>${pct(d.accuracy)}</td>
-        <td>${pct(d.f1)}</td>
-        <td>${pct(d.precision)}</td>
-        <td>${pct(d.recall)}</td>
-        <td><span class="pill ${isBest && d.accuracy ? 'best' : 'normal'}">${isBest && d.accuracy ? 'BEST' : 'TRAINING'}</span></td>
+        <td>${trained ? pct(d.accuracy) : '<span class="text-muted">—</span>'}</td>
+        <td>${trained ? pct(d.f1)       : '<span class="text-muted">—</span>'}</td>
+        <td>${trained ? pct(d.precision): '<span class="text-muted">—</span>'}</td>
+        <td>${trained ? pct(d.recall)   : '<span class="text-muted">—</span>'}</td>
+        <td><span class="pill ${statusClass}">${statusText}</span></td>
       </tr>`;
-    }).join('') || '<tr><td colspan="6" class="text-muted text-sm" style="padding:12px;">Start training to populate model data.</td></tr>';
+    }).join('');
   }
   updateAllCharts();
 }
@@ -712,3 +799,263 @@ function renderBlockchain() {
       <td class="text-mono text-sm">${tx.timestamp || ''}</td>
     </tr>`).join('') || '<tr><td colspan="5" class="text-muted text-sm" style="padding:12px;">No transactions yet.</td></tr>';
 }
+
+// ==============================================
+// 15. LIVE TESTING
+// ==============================================
+
+let LT_PROFILES = [];
+let ltIsCapturing = false;
+
+function renderLiveTesting() {
+  ltUpdateModelBanner();
+  ltUpdateHistory();
+  // Only reset to 'synthetic' tab if no tab is currently active
+  if (!document.querySelector('.lt-tab.active')) {
+    ltSetSource('synthetic');
+  }
+  if (LT_PROFILES.length > 0) {
+    ltRenderProfiles();
+  } else {
+    ltLoadProfiles();
+  }
+}
+
+async function ltLoadProfiles() {
+  try {
+    const res = await fetch('/api/live_test/profiles');
+    LT_PROFILES = await res.json();
+    if (STATE.currentPage === 'livetesting') {
+      ltRenderProfiles();
+    }
+  } catch (err) {
+    console.error("Failed to load profiles:", err);
+  }
+}
+
+function ltRenderProfiles() {
+  const benignContainer = document.getElementById('lt-benign-profiles');
+  const malContainer = document.getElementById('lt-malicious-profiles');
+  if (!benignContainer || !malContainer) return;
+
+  const benignHTML = [], malHTML = [];
+  LT_PROFILES.forEach(p => {
+    const isBenign = p.class === 'BENIGN';
+    const tagClass = isBenign ? 'lt-card-class-benign' : (p.class === 'RECON' ? 'lt-card-class-recon' : 'lt-card-class-malicious');
+    const html = `
+      <div class="lt-profile-card ${isBenign ? 'benign' : 'malicious'}" onclick="ltRunSynthetic('${p.id}')">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="lt-card-title">${p.label}</div>
+          <div class="${tagClass}">${p.class}</div>
+        </div>
+        <div class="lt-card-desc">${p.description}</div>
+      </div>
+    `;
+    if (isBenign) benignHTML.push(html);
+    else malHTML.push(html);
+  });
+  benignContainer.innerHTML = benignHTML.join('');
+  malContainer.innerHTML = malHTML.join('');
+}
+
+function ltSetSource(source) {
+  // Tabs
+  document.getElementById('lt-tab-synthetic').classList.remove('active');
+  document.getElementById('lt-tab-live').classList.remove('active');
+  document.getElementById('lt-tab-csv').classList.remove('active');
+  document.getElementById(`lt-tab-${source}`).classList.add('active');
+
+  // Panels
+  document.getElementById('lt-panel-synthetic').style.display = 'none';
+  document.getElementById('lt-panel-live').style.display = 'none';
+  document.getElementById('lt-panel-csv').style.display = 'none';
+  document.getElementById(`lt-panel-${source}`).style.display = 'block';
+}
+
+function ltUpdateModelBanner() {
+  const banner = document.getElementById('lt-model-banner');
+  if (!banner) return;
+  const m = STATE.models || {};
+  let anyTrained = Object.values(m).some(v => v && v.trained);
+  if (anyTrained) {
+    banner.className = 'lt-banner lt-banner-ok';
+    banner.innerText = '✔️ Trained model loaded. Ready for real inference.';
+  } else {
+    banner.className = 'lt-banner lt-banner-warn';
+    banner.innerText = '⚠️ No trained model loaded yet. Tests will use heuristic rule-based classification. Train a model first for real inference.';
+  }
+}
+
+async function ltRunSynthetic(profileId) {
+  const p = LT_PROFILES.find(x => x.id === profileId);
+  if(!p) return;
+  document.getElementById('lt-result-empty').style.display = 'none';
+  document.getElementById('lt-result-card').style.display = 'block';
+  
+  try {
+    const res = await fetch('/api/live_test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: 'synthetic', profile: profileId })
+    });
+    const data = await res.json();
+    ltRenderResult(data);
+    ltUpdateHistory();
+  } catch (err) {
+    showToast(`Error running synthetic test: ${err}`);
+  }
+}
+
+async function ltStartCapture() {
+  if (ltIsCapturing) return;
+  const btn = document.getElementById('lt-btn-capture');
+  const dur = document.getElementById('lt-capture-duration').value || 5;
+  const status = document.getElementById('lt-capture-status');
+  const statusTxt = document.getElementById('lt-capture-status-text');
+
+  btn.disabled = true;
+  ltIsCapturing = true;
+  status.style.display = 'flex';
+  statusTxt.innerText = `Capturing packets on interface for ${dur} seconds...`;
+
+  try {
+    await fetch('/api/live_test/capture', {
+      method: 'POST',
+      body: JSON.stringify({ duration: dur })
+    });
+    // The rest is handled by 'live_capture_result' websocket event
+  } catch (err) {
+    ltHandleCaptureResult({ error: err.toString() });
+  }
+}
+
+function ltHandleCaptureResult(data) {
+  const btn = document.getElementById('lt-btn-capture');
+  const status = document.getElementById('lt-capture-status');
+  if(btn) btn.disabled = false;
+  if(status) status.style.display = 'none';
+  ltIsCapturing = false;
+
+  if (data.error) {
+    showToast(`Live capture failed: ${data.error}`);
+    return;
+  }
+
+  const pnlEmpty = document.getElementById('lt-result-empty');
+  const pnlCard  = document.getElementById('lt-result-card');
+  if(pnlEmpty) pnlEmpty.style.display = 'none';
+  if(pnlCard) pnlCard.style.display = 'block';
+
+  ltRenderResult(data);
+  ltUpdateHistory();
+  showToast(`✓ Captured ${data.packets_captured} packets and generated classification.`);
+}
+
+async function ltRunCSV() {
+  const csv = document.getElementById('lt-csv-input').value;
+  if (!csv.trim()) return showToast("Please paste CSV data first.");
+  
+  document.getElementById('lt-result-empty').style.display = 'none';
+  document.getElementById('lt-result-card').style.display = 'block';
+
+  try {
+    const res = await fetch('/api/live_test', {
+      method: 'POST',
+      body: JSON.stringify({ source: 'csv', csv_row: csv })
+    });
+    const data = await res.json();
+    if(data.error) {
+      showToast(`Error: ${data.error}`);
+    } else {
+      ltRenderResult(data);
+      ltUpdateHistory();
+    }
+  } catch (err) {
+    showToast(`Error: ${err}`);
+  }
+}
+
+function ltRenderResult(data) {
+  // Source badge
+  const badge = document.getElementById('lt-source-badge');
+  badge.innerText = data.source_type;
+  badge.className = `lt-badge lt-badge-${data.source_color || 'gray'}`;
+
+  // Verdict box
+  const isBenign = data.prediction === 'BENIGN';
+  const isRecon  = data.prediction === 'RECON';
+  const verdictBlock = document.getElementById('lt-prediction-block');
+  verdictBlock.className = `lt-prediction-block ${isBenign ? 'benign' : (isRecon ? 'recon' : 'ddos')}`;
+  
+  const vText = document.getElementById('lt-verdict-text');
+  vText.innerText = data.prediction;
+  vText.className = `lt-verdict-text ${isBenign ? 'benign' : (isRecon ? 'recon' : 'ddos')}`;
+  
+  document.getElementById('lt-profile-info').innerText = data.profile_label || 'Custom Sample';
+
+  // Confidence bar
+  document.getElementById('lt-confidence-val').innerText = pct(data.confidence || 0);
+  const confBar = document.getElementById('lt-conf-bar');
+  confBar.style.width = `${(data.confidence || 0) * 100}%`;
+  confBar.className = `lt-conf-bar ${isBenign ? 'benign' : (isRecon ? 'recon' : 'ddos')}`;
+
+  // Probabilities
+  const probsContainer = document.getElementById('lt-probs-list');
+  const probsHtml = Object.entries(data.class_probs || {}).map(([cls, prob]) => {
+    return `<div class="lt-prob-row">
+      <div class="lt-prob-label">${cls}</div>
+      <div class="lt-prob-bar-wrap"><div class="lt-prob-bar" style="width:${prob*100}%"></div></div>
+      <div class="lt-prob-val">${pct(prob)}</div>
+    </div>`;
+  }).join('');
+  probsContainer.innerHTML = probsHtml;
+
+  // Features
+  const fGrid = document.getElementById('lt-features-list');
+  const fHtml = Object.entries(data.feature_summary || {}).map(([k, v]) => {
+    let dispVal = v;
+    if (typeof v === 'number') dispVal = v % 1 === 0 ? v : v.toFixed(3);
+    return `<div class="lt-feature-item">
+      <div class="lt-feature-key">${k.replace(/_/g, ' ')}</div>
+      <div class="lt-feature-val">${dispVal}</div>
+    </div>`;
+  }).join('');
+  fGrid.innerHTML = fHtml;
+
+  // Action box
+  const actionBox = document.getElementById('lt-action-box');
+  actionBox.className = `lt-action-box ${data.action_color}`;
+  document.getElementById('lt-action-text').innerText = data.action;
+
+  // Meta
+  document.getElementById('lt-model-used-label').innerText = data.model_used ? data.arch : 'Heuristic (No Model)';
+  document.getElementById('lt-result-ts').innerText = data.timestamp;
+}
+
+async function ltUpdateHistory() {
+  const tbody = document.getElementById('lt-history-body');
+  if(!tbody) return;
+  try {
+    const res = await fetch('/api/live_test/history');
+    const history = await res.json();
+    if(history.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-muted text-sm" style="padding:12px;">No tests run yet.</td></tr>';
+      return;
+    }
+    const html = history.map(h => {
+      const isBenign = h.prediction === 'BENIGN';
+      const cColor = isBenign ? '#2E7D32' : (h.prediction === 'RECON' ? '#E65100' : '#B71C1C');
+      return `<tr>
+        <td class="text-sm">${h.timestamp}</td>
+        <td><span class="lt-badge lt-badge-${h.source_color}">${h.source_type}</span></td>
+        <td class="text-sm">${h.profile_label || 'Unknown'}</td>
+        <td style="font-weight:700; color:${cColor}">${h.prediction}</td>
+        <td>${pct(h.confidence)}</td>
+      </tr>`;
+    }).join('');
+    tbody.innerHTML = html;
+  } catch (err) {
+    console.error("History err:", err);
+  }
+}
+

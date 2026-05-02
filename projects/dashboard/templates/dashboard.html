@@ -59,10 +59,16 @@
       <span class="nav-icon">⛓</span> Blockchain
     </div>
 
+    <div class="sidebar-section-label">Testing</div>
+    <div class="nav-item" data-page="livetesting">
+      <span class="nav-icon">🔬</span> Live Testing
+    </div>
+
     <div class="sidebar-controls">
       <div id="status-pill" class="status-pill idle">IDLE</div>
       <button class="btn btn-danger btn-full" id="btn-stop" style="display:none;">⏹ Stop Training</button>
     </div>
+
   </nav>
 
   <!-- ── Main Content ──────────────────────────────────────── -->
@@ -388,10 +394,11 @@
     <!-- ═══════════ PAGE: MODELS ═══════════ -->
     <section class="page" id="page-models">
       <h1 class="page-title">Detection Model Performance</h1>
-      <p class="page-subtitle">Live metrics evaluated on test set every 5 rounds.</p>
+      <p class="page-subtitle">Live metrics evaluated on test set every 5 rounds. Architecture comparison and design rationale below.</p>
 
+      <!-- Live Metrics Table -->
       <div class="panel mb-20">
-        <div class="panel-header"><span class="panel-title">Model Metrics</span></div>
+        <div class="panel-header"><span class="panel-title">Model Metrics</span><span class="panel-subtitle">Updated every evaluation round</span></div>
         <div class="panel-body" style="padding:0;">
           <table>
             <thead><tr><th>Model</th><th>Accuracy</th><th>F1-Score</th><th>Precision</th><th>Recall</th><th>Status</th></tr></thead>
@@ -402,13 +409,138 @@
         </div>
       </div>
 
-      <div class="panel">
+      <!-- Accuracy Over Rounds -->
+      <div class="panel mb-20">
         <div class="panel-header">
           <span class="panel-title">Accuracy Over Rounds</span>
-          <span class="panel-subtitle">Solid = CNN-BiLSTM</span>
+          <span class="panel-subtitle">CNN-BiLSTM &middot; Transformer &middot; Hybrid Ensemble</span>
         </div>
         <div class="panel-body"><div class="chart-wrap tall"><canvas id="chart-models"></canvas></div></div>
       </div>
+
+      <!-- ── Architecture Comparison Cards ── -->
+      <h2 style="font-size:15px;font-weight:700;margin:0 0 16px 0;color:#111;letter-spacing:.04em;">ARCHITECTURE COMPARISON</h2>
+      <div class="model-arch-grid mb-20">
+
+        <!-- CNN-BiLSTM Card -->
+        <div class="arch-card">
+          <div class="arch-card-header cnn">
+            <span class="arch-card-icon">⊞</span>
+            <div>
+              <div class="arch-card-name">CNN-BiLSTM</div>
+              <div class="arch-card-tag">Spatial + Temporal</div>
+            </div>
+          </div>
+          <div class="arch-card-body">
+            <div class="arch-layer-stack">
+              <div class="arch-layer">Conv1D (64) → Conv1D (128)</div>
+              <div class="arch-arrow">↓</div>
+              <div class="arch-layer">BiLSTM (64) → BiLSTM (32)</div>
+              <div class="arch-arrow">↓</div>
+              <div class="arch-layer">Dropout (0.4)</div>
+              <div class="arch-arrow">↓</div>
+              <div class="arch-layer">Dense → Softmax</div>
+            </div>
+            <div class="arch-stats">
+              <div class="arch-stat"><span class="arch-stat-label">Strength</span><span class="arch-stat-val good">Local pattern + sequence</span></div>
+              <div class="arch-stat"><span class="arch-stat-label">Speed</span><span class="arch-stat-val good">Fast</span></div>
+              <div class="arch-stat"><span class="arch-stat-label">Memory</span><span class="arch-stat-val good">Low</span></div>
+              <div class="arch-stat"><span class="arch-stat-label">Best For</span><span class="arch-stat-val">SYN Flood, UDP Flood</span></div>
+              <div class="arch-stat"><span class="arch-stat-label">Weakness</span><span class="arch-stat-val warn">Long-range dependencies</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Transformer Card -->
+        <div class="arch-card">
+          <div class="arch-card-header transformer">
+            <span class="arch-card-icon">◈</span>
+            <div>
+              <div class="arch-card-name">Transformer</div>
+              <div class="arch-card-tag">Self-Attention Encoder</div>
+            </div>
+          </div>
+          <div class="arch-card-body">
+            <div class="arch-layer-stack">
+              <div class="arch-layer">Dense (64) + Positional Embed</div>
+              <div class="arch-arrow">↓</div>
+              <div class="arch-layer">Multi-Head Attention (4 heads)</div>
+              <div class="arch-arrow">↓</div>
+              <div class="arch-layer">LayerNorm + FFN (128→64)</div>
+              <div class="arch-arrow">↓</div>
+              <div class="arch-layer">GlobalAvgPool → Softmax</div>
+            </div>
+            <div class="arch-stats">
+              <div class="arch-stat"><span class="arch-stat-label">Strength</span><span class="arch-stat-val good">Long-range flow patterns</span></div>
+              <div class="arch-stat"><span class="arch-stat-label">Speed</span><span class="arch-stat-val warn">Moderate</span></div>
+              <div class="arch-stat"><span class="arch-stat-label">Memory</span><span class="arch-stat-val warn">Medium</span></div>
+              <div class="arch-stat"><span class="arch-stat-label">Best For</span><span class="arch-stat-val">Slowloris, Low-rate DDoS</span></div>
+              <div class="arch-stat"><span class="arch-stat-label">Weakness</span><span class="arch-stat-val warn">High-frequency spikes</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Hybrid Card -->
+        <div class="arch-card">
+          <div class="arch-card-header hybrid">
+            <span class="arch-card-icon">⊛</span>
+            <div>
+              <div class="arch-card-name">Hybrid Ensemble</div>
+              <div class="arch-card-tag">Late-Fusion CNN + Transformer</div>
+            </div>
+          </div>
+          <div class="arch-card-body">
+            <div class="arch-layer-stack">
+              <div class="arch-layer">CNN-BiLSTM branch &nbsp;||&nbsp; Transformer branch</div>
+              <div class="arch-arrow">↓</div>
+              <div class="arch-layer">Concatenate (Late Fusion)</div>
+              <div class="arch-arrow">↓</div>
+              <div class="arch-layer">Dense (128) + Dropout (0.3)</div>
+              <div class="arch-arrow">↓</div>
+              <div class="arch-layer">Dense → Softmax</div>
+            </div>
+            <div class="arch-stats">
+              <div class="arch-stat"><span class="arch-stat-label">Strength</span><span class="arch-stat-val good">Best of both architectures</span></div>
+              <div class="arch-stat"><span class="arch-stat-label">Speed</span><span class="arch-stat-val bad">Slow (2× parameters)</span></div>
+              <div class="arch-stat"><span class="arch-stat-label">Memory</span><span class="arch-stat-val bad">High</span></div>
+              <div class="arch-stat"><span class="arch-stat-label">Best For</span><span class="arch-stat-val">All attack types</span></div>
+              <div class="arch-stat"><span class="arch-stat-label">Weakness</span><span class="arch-stat-val warn">Training time</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Radar Chart + Spec Table ── -->
+      <div class="two-col-models mb-20">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Multi-Dimension Comparison</span><span class="panel-subtitle">Radar view — 6 criteria</span></div>
+          <div class="panel-body"><div class="chart-wrap" style="height:320px;"><canvas id="chart-model-radar"></canvas></div></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Architecture Specifications</span></div>
+          <div class="panel-body" style="padding:0;">
+            <table>
+              <thead><tr><th>Attribute</th><th>CNN-BiLSTM</th><th>Transformer</th><th>Hybrid</th></tr></thead>
+              <tbody>
+                <tr><td><strong>Input Shape</strong></td><td colspan="3" class="text-muted text-sm" style="text-align:center;">(timesteps × features) — set by wizard</td></tr>
+                <tr><td><strong>Approx. Parameters</strong></td><td>~180K</td><td>~120K</td><td>~310K</td></tr>
+                <tr><td><strong>Convolution Layers</strong></td><td>2 × Conv1D</td><td>—</td><td>2 × Conv1D</td></tr>
+                <tr><td><strong>Recurrent Layers</strong></td><td>2 × BiLSTM</td><td>—</td><td>2 × BiLSTM</td></tr>
+                <tr><td><strong>Attention Heads</strong></td><td>—</td><td>4</td><td>4</td></tr>
+                <tr><td><strong>Dropout Rate</strong></td><td>0.40</td><td>0.30</td><td>0.40 / 0.30</td></tr>
+                <tr><td><strong>Loss Function</strong></td><td colspan="3" class="text-muted text-sm" style="text-align:center;">Sparse Categorical CE (multiclass) / Binary CE (binary)</td></tr>
+                <tr><td><strong>Optimizer</strong></td><td>Adam</td><td>Adam</td><td>Adam</td></tr>
+                <tr><td><strong>Relative Training Time</strong></td><td>1×</td><td>1.4×</td><td>2.8×</td></tr>
+                <tr><td><strong>Adversarial Robustness</strong></td><td>Medium</td><td>Medium</td><td>High</td></tr>
+                <tr><td><strong>Interpretability</strong></td><td>Low</td><td>Medium (attention)</td><td>Low</td></tr>
+                <tr><td><strong>Federated Suitability</strong></td><td>Excellent</td><td>Good</td><td>Good</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
     </section>
 
     <!-- ═══════════ PAGE: BLOCKCHAIN ═══════════ -->
@@ -431,6 +563,148 @@
               <tr><td colspan="5" class="text-muted text-sm" style="padding:12px;">No transactions yet.</td></tr>
             </tbody>
           </table>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ═══════════ PAGE: LIVE TESTING ═══════════ -->
+    <section class="page" id="page-livetesting">
+      <h1 class="page-title">🔬 Live Traffic Testing</h1>
+      <p class="page-subtitle">Classify network traffic through the trained model. Choose a synthetic profile, capture real packets, or paste a CSV row.</p>
+
+      <!-- Model status banner -->
+      <div id="lt-model-banner" class="lt-banner lt-banner-warn">
+        ⚠️ No trained model loaded yet. Tests will use heuristic rule-based classification. Train a model first for real inference.
+      </div>
+
+      <div class="two-col-lt">
+        <!-- ===== LEFT: Input Panel ===== -->
+        <div>
+
+          <!-- Source Selector -->
+          <div class="panel mb-20">
+            <div class="panel-header"><span class="panel-title">Traffic Source</span></div>
+            <div class="panel-body">
+              <div class="lt-source-tabs">
+                <button class="lt-tab active" id="lt-tab-synthetic" onclick="ltSetSource('synthetic')">Synthetic Traffic</button>
+                <button class="lt-tab" id="lt-tab-live" onclick="ltSetSource('live')">Live Capture</button>
+                <button class="lt-tab" id="lt-tab-csv" onclick="ltSetSource('csv')">CSV Row</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Synthetic Profiles Panel -->
+          <div class="panel mb-20" id="lt-panel-synthetic">
+            <div class="panel-header"><span class="panel-title">Traffic Profiles</span><span class="panel-subtitle">Synthetic feature vectors</span></div>
+            <div class="panel-body">
+              <div class="lt-section-label">✅ Benign Traffic</div>
+              <div class="lt-profile-grid" id="lt-benign-profiles"></div>
+              <div class="lt-section-label" style="margin-top:16px;">🚨 Malicious Traffic</div>
+              <div class="lt-profile-grid" id="lt-malicious-profiles"></div>
+            </div>
+          </div>
+
+          <!-- Live Capture Panel -->
+          <div class="panel mb-20" id="lt-panel-live" style="display:none;">
+            <div class="panel-header"><span class="panel-title">Real-Time Packet Capture</span><span class="panel-subtitle">Scapy required &bull; Run as admin</span></div>
+            <div class="panel-body">
+              <div class="lt-info-box">
+                <strong>📡 Live Authenticity Mode</strong><br/>
+                Captures real network packets from your interface, extracts flow-level features,
+                and classifies them through the trained model. Requires Scapy and administrator/root privileges.
+              </div>
+              <div class="form-group" style="margin-top:16px;">
+                <label class="form-label" for="lt-capture-duration">Capture Duration (seconds)</label>
+                <input type="number" id="lt-capture-duration" class="form-input" min="2" max="30" value="5" style="width:100px;"/>
+              </div>
+              <button class="btn btn-primary" id="lt-btn-capture" onclick="ltStartCapture()">
+                <span>📡</span> Start Capture &amp; Classify
+              </button>
+              <div id="lt-capture-status" class="lt-capture-status" style="display:none;">
+                <div class="lt-pulse"></div>
+                <span id="lt-capture-status-text">Capturing packets…</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- CSV Panel -->
+          <div class="panel mb-20" id="lt-panel-csv" style="display:none;">
+            <div class="panel-header"><span class="panel-title">Raw Feature CSV Row</span></div>
+            <div class="panel-body">
+              <label class="form-label">Paste comma-separated feature values</label>
+              <textarea id="lt-csv-input" class="lt-csv-area"
+                placeholder="54321,80,6,2.4,512,180,8,4096,64,1,12,1,0,0.05,0.9,0.05,0,2.4,1.2,0.8"></textarea>
+              <div class="form-hint">Expected order: src_port, dst_port, protocol, duration, pkt_len_mean, pkt_len_std, pps, bps, ttl, syn_count, ack_count, fin_count, rst_count, flag_SYN, flag_ACK, flag_FIN, flag_RST, flow_dur, active_mean, idle_mean</div>
+              <button class="btn btn-primary" style="margin-top:12px;" onclick="ltRunCSV()">▶ Classify CSV Row</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== RIGHT: Results Panel ===== -->
+        <div>
+          <div class="panel mb-20" id="lt-result-panel">
+            <div class="panel-header"><span class="panel-title">Classification Result</span><span id="lt-source-badge" class="lt-badge lt-badge-blue">SYNTHETIC</span></div>
+            <div class="panel-body">
+
+              <!-- Empty state -->
+              <div id="lt-result-empty" class="lt-empty-state">
+                Select a traffic profile or start a live capture to classify traffic.
+              </div>
+
+              <!-- Prediction card -->
+              <div id="lt-result-card" style="display:none;">
+                <div class="lt-prediction-block" id="lt-prediction-block">
+                  <div class="lt-verdict-label">Verdict</div>
+                  <div class="lt-verdict-text" id="lt-verdict-text">—</div>
+                  <div class="lt-profile-info" id="lt-profile-info">—</div>
+                </div>
+
+                <div style="margin-top:20px;">
+                  <div class="lt-metric-row">
+                    <span class="lt-metric-label">Confidence</span>
+                    <span class="lt-metric-value" id="lt-confidence-val">—</span>
+                  </div>
+                  <div class="lt-conf-bar-wrap">
+                    <div class="lt-conf-bar" id="lt-conf-bar"></div>
+                  </div>
+                </div>
+
+                <div style="margin-top:20px;">
+                  <div class="lt-metric-label" style="margin-bottom:8px;">Class Probabilities</div>
+                  <div id="lt-probs-list"></div>
+                </div>
+
+                <div style="margin-top:20px;">
+                  <div class="lt-metric-label" style="margin-bottom:8px;">Feature Summary</div>
+                  <div id="lt-features-list" class="lt-feature-grid"></div>
+                </div>
+
+                <div class="lt-action-box" id="lt-action-box">
+                  <strong>Recommended Action:</strong>
+                  <div id="lt-action-text">—</div>
+                </div>
+
+                <div class="lt-meta-row">
+                  <span>🧠 Model: <span id="lt-model-used-label">heuristic</span></span>
+                  <span>🕒 <span id="lt-result-ts">—</span></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Test History -->
+          <div class="panel">
+            <div class="panel-header"><span class="panel-title">Test History</span><span class="panel-subtitle">Last 10 classifications</span></div>
+            <div class="panel-body" style="padding:0;">
+              <table>
+                <thead><tr><th>Time</th><th>Source</th><th>Profile</th><th>Verdict</th><th>Confidence</th></tr></thead>
+                <tbody id="lt-history-body">
+                  <tr><td colspan="5" class="text-muted text-sm" style="padding:12px;">No tests run yet.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
     </section>

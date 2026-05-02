@@ -99,6 +99,8 @@ AVAILABLE_MODELS = [
 ]
 
 # ── Central system_state ──────────────────────────────────────────────────────
+_blank_model_metrics = lambda: {"accuracy": 0.0, "f1": 0.0, "precision": 0.0, "recall": 0.0, "trained": False, "history": []}
+
 system_state = {
     "status":    "idle",    # idle | configuring | running | complete | error
     "config":    pipeline_config,
@@ -115,10 +117,18 @@ system_state = {
     "nodes":     {},
     "security":  {"posture": "MONITOR", "threat_level": 0, "quarantined_nodes": [], "events": []},
     "blockchain":{"total_blocks": 1, "ledger_health": "SYNCED", "latest_hash": "0x0000000000000000", "recent_transactions": []},
-    "models":    {"cnn_bilstm": {"accuracy": 0.0, "f1": 0.0, "precision": 0.0, "recall": 0.0}, "best_model": "N/A"},
+    "models": {
+        "cnn_bilstm":  _blank_model_metrics(),
+        "transformer": _blank_model_metrics(),
+        "hybrid":      _blank_model_metrics(),
+        "best_model":  "N/A",
+    },
     "history":   [],
     "log":       [],
+    "live_test_history": [],
 }
+# Keep a reference to the latest trained Keras model for live inference
+_trained_model_ref   = {"model": None, "arch": None, "input_shape": None, "num_classes": 0}
 
 _stop_flag = threading.Event()
 
@@ -192,6 +202,10 @@ def run_real_pipeline(config: dict):
     system_state["nodes"] = {}
     system_state["log"] = []
     system_state["agents"] = []
+
+    # Reset ONLY the selected architecture's slot; preserve other archs' results
+    arch_to_reset = config.get("model", "cnn_bilstm")
+    system_state["models"][arch_to_reset] = _blank_model_metrics()
 
     fl = system_state["fl"]
     fl["current_round"]  = 0
@@ -458,6 +472,7 @@ def run_real_pipeline(config: dict):
         arch_label = arch_labels.get(model_arch, "CNN-BiLSTM")
         system_state["models"]["best_model"] = arch_label
         fl["model_architecture"] = arch_label
+        fl["model_arch_key"] = model_arch   # store raw key for JS lookup
 
         global_keras_model = make_model()
         _push_log(f"Model built: {arch_label} — input {input_shape}, classes {num_classes}")
@@ -565,8 +580,7 @@ def run_real_pipeline(config: dict):
                 _push_log(f"  No valid updates in round {rnd} — skipping aggregation.", "WARNING")
                 continue
 
-            # Aggregation
-            fl["aggregation_strategy"] = "FedAvg"
+            # Aggregation  (strategy set by agent at end of round, not hardcoded here)
             fl["active_nodes"] = len(local_updates)
             round_summary = fl_server.aggregate_and_update(local_updates)
             avg = round_summary.get("avg_metrics", {})
@@ -582,9 +596,13 @@ def run_real_pipeline(config: dict):
             fl["loss"] = round(max(0.001, fl["loss"] * (2.0 - growth_mask) + random.uniform(0.01, 0.05)), 4)
 
             fl["convergence_status"] = "Converging" if fl["accuracy"] > 0.6 else "Initializing"
+            
+            # ── Temporal Trust Bleed ──
+            trust_mgr.apply_temporal_decay(decay_rate=0.02, minimum_floor=0.50)
 
             # ── Posture Check ──
-            avg_trust = sum(ns["trust_score"] for ns in system_state["nodes"].values()) / fl["active_nodes"]
+            active_count = max(fl["active_nodes"], 1)  # guard ZeroDivisionError
+            avg_trust = sum(ns["trust_score"] for ns in system_state["nodes"].values()) / active_count
             quarantined = [n for n, ns in system_state["nodes"].items() if ns["status"] == "QUARANTINED"]
             
             new_posture = "MONITOR"
@@ -618,22 +636,31 @@ def run_real_pipeline(config: dict):
             system_state["agents"] = system_state["agents"][:30]
             socketio.emit("agent_update", agent_decisions)
 
-            # Every 5 rounds: evaluate on test
-            if rnd % 5 == 0 or rnd == config["num_rounds"]:
+            # Sync node_state trust scores after temporal decay
+            for nid_s, ns_s in system_state["nodes"].items():
+                if nid_s in trust_mgr.trust_scores:
+                    ns_s["trust_score"] = round(trust_mgr.get_trust_score(nid_s), 3)
+                    socketio.emit("node_update", ns_s)
+
+            # Every 5 rounds (or Round 1): evaluate on test
+            if rnd == 1 or rnd % 5 == 0 or rnd == config["num_rounds"]:
                 try:
                     _push_log(f"  Evaluating global model on test set…")
                     res = global_keras_model.evaluate(X_test_r, y_test, verbose=0)
                     fl["accuracy"] = round(float(res[1]), 4)
                     fl["loss"]     = round(float(res[0]), 4)
-                    # Store under the selected model key
-                    mkey = model_arch  # e.g. cnn_bilstm | transformer | hybrid
-                    if mkey not in system_state["models"]:
-                        system_state["models"][mkey] = {}
+                    mkey = model_arch
                     system_state["models"][mkey]["accuracy"]  = fl["accuracy"]
                     system_state["models"][mkey]["f1"]        = round(fl["accuracy"] - 0.01,  4)
                     system_state["models"][mkey]["precision"] = round(fl["accuracy"] - 0.008, 4)
                     system_state["models"][mkey]["recall"]    = round(fl["accuracy"] - 0.012, 4)
+                    system_state["models"][mkey]["trained"]   = True
                     system_state["models"]["best_model"] = arch_label
+                    # Register model for live inference
+                    _trained_model_ref["model"]       = global_keras_model
+                    _trained_model_ref["arch"]        = model_arch
+                    _trained_model_ref["input_shape"] = input_shape
+                    _trained_model_ref["num_classes"] = num_classes
                     _push_log(f"  Round {rnd} global accuracy: {fl['accuracy']:.4f}  loss: {fl['loss']:.4f}")
                 except Exception as e:
                     _push_log(f"  Evaluation error: {e}", "WARNING")
@@ -659,6 +686,10 @@ def run_real_pipeline(config: dict):
             _emit_state()
 
         # ── 12. Done ────────────────────────────────────────────────────────────
+        system_state["models"][model_arch]["history"] = [
+            {"round": h["round"], "accuracy": h["accuracy"], "loss": h["loss"]}
+            for h in system_state["history"]
+        ]
         system_state["status"] = "complete"
         fl["is_training"] = False
         fl["convergence_status"] = "Complete"
@@ -667,7 +698,8 @@ def run_real_pipeline(config: dict):
         socketio.emit("training_complete", {
             "message": f"Training complete — Final accuracy: {fl['accuracy']:.2%}",
             "final_accuracy": fl["accuracy"],
-            "best_model": "CNN-BiLSTM",
+            "best_model": arch_label,
+            "model_arch_key": model_arch,
         })
 
     except Exception as e:
@@ -771,6 +803,412 @@ def api_pipeline_log():   return jsonify(system_state["log"])
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Live Testing Endpoints
+# ──────────────────────────────────────────────────────────────────────────────
+
+# ── Synthetic traffic profiles ─────────────────────────────────────────────────
+SYNTHETIC_PROFILES = {
+    # ---- BENIGN ----
+    "normal_http": {
+        "label": "Normal HTTP Browsing",
+        "class": "BENIGN",
+        "color": "green",
+        "description": "Standard GET requests to web servers — low packet rate, moderate payload sizes, established TCP state.",
+        "features": {
+            "src_port": 54321, "dst_port": 80, "protocol": 6,  # TCP
+            "duration": 2.4, "packet_length_mean": 512, "packet_length_std": 180,
+            "packets_per_second": 8, "bytes_per_second": 4096, "ttl": 64,
+            "syn_count": 1, "ack_count": 12, "fin_count": 1, "rst_count": 0,
+            "flags_SYN": 0.05, "flags_ACK": 0.9, "flags_FIN": 0.05, "flags_RST": 0,
+            "flow_duration": 2.4, "active_mean": 1.2, "idle_mean": 0.8,
+        }
+    },
+    "dns_query": {
+        "label": "DNS Queries",
+        "class": "BENIGN",
+        "color": "green",
+        "description": "Legitimate DNS resolution traffic — small UDP packets, short duration, low rate.",
+        "features": {
+            "src_port": 52145, "dst_port": 53, "protocol": 17,  # UDP
+            "duration": 0.08, "packet_length_mean": 72, "packet_length_std": 20,
+            "packets_per_second": 3, "bytes_per_second": 216, "ttl": 128,
+            "syn_count": 0, "ack_count": 0, "fin_count": 0, "rst_count": 0,
+            "flags_SYN": 0, "flags_ACK": 0, "flags_FIN": 0, "flags_RST": 0,
+            "flow_duration": 0.08, "active_mean": 0.04, "idle_mean": 0.04,
+        }
+    },
+    "https_session": {
+        "label": "HTTPS/TLS Session",
+        "class": "BENIGN",
+        "color": "green",
+        "description": "Encrypted long-lived TLS session — variable packet sizes, sustained throughput.",
+        "features": {
+            "src_port": 60123, "dst_port": 443, "protocol": 6,
+            "duration": 45.0, "packet_length_mean": 890, "packet_length_std": 320,
+            "packets_per_second": 25, "bytes_per_second": 22250, "ttl": 64,
+            "syn_count": 1, "ack_count": 380, "fin_count": 2, "rst_count": 0,
+            "flags_SYN": 0.003, "flags_ACK": 0.99, "flags_FIN": 0.007, "flags_RST": 0,
+            "flow_duration": 45.0, "active_mean": 22.0, "idle_mean": 3.0,
+        }
+    },
+    # ---- MALICIOUS ----
+    "syn_flood": {
+        "label": "SYN Flood DDoS",
+        "class": "DDoS",
+        "color": "red",
+        "description": "Massive burst of TCP SYN packets — half-open connections, no ACK responses, high rate, short TTL.",
+        "features": {
+            "src_port": 0, "dst_port": 80, "protocol": 6,
+            "duration": 0.001, "packet_length_mean": 60, "packet_length_std": 5,
+            "packets_per_second": 85000, "bytes_per_second": 5100000, "ttl": 48,
+            "syn_count": 1000, "ack_count": 0, "fin_count": 0, "rst_count": 5,
+            "flags_SYN": 0.99, "flags_ACK": 0, "flags_FIN": 0, "flags_RST": 0.01,
+            "flow_duration": 0.001, "active_mean": 0.001, "idle_mean": 0,
+        }
+    },
+    "udp_flood": {
+        "label": "UDP Flood",
+        "class": "DDoS",
+        "color": "red",
+        "description": "High-volume UDP packets to random ports — max packet size, no connection state, random destinations.",
+        "features": {
+            "src_port": 0, "dst_port": 0, "protocol": 17,
+            "duration": 0.0001, "packet_length_mean": 1480, "packet_length_std": 20,
+            "packets_per_second": 120000, "bytes_per_second": 177600000, "ttl": 64,
+            "syn_count": 0, "ack_count": 0, "fin_count": 0, "rst_count": 0,
+            "flags_SYN": 0, "flags_ACK": 0, "flags_FIN": 0, "flags_RST": 0,
+            "flow_duration": 0.0001, "active_mean": 0.0001, "idle_mean": 0,
+        }
+    },
+    "slowloris": {
+        "label": "HTTP Slowloris",
+        "class": "DDoS",
+        "color": "red",
+        "description": "Many slow concurrent HTTP connections — minimal data, long duration, keeps sockets open.",
+        "features": {
+            "src_port": 55000, "dst_port": 80, "protocol": 6,
+            "duration": 900.0, "packet_length_mean": 30, "packet_length_std": 10,
+            "packets_per_second": 0.1, "bytes_per_second": 3, "ttl": 64,
+            "syn_count": 1, "ack_count": 90, "fin_count": 0, "rst_count": 0,
+            "flags_SYN": 0.01, "flags_ACK": 0.99, "flags_FIN": 0, "flags_RST": 0,
+            "flow_duration": 900.0, "active_mean": 890.0, "idle_mean": 5.0,
+        }
+    },
+    "port_scan": {
+        "label": "Port Scan",
+        "class": "RECON",
+        "color": "orange",
+        "description": "Sequential port sweep — single source, incremental destination ports, SYN-only probes.",
+        "features": {
+            "src_port": 44000, "dst_port": 1, "protocol": 6,
+            "duration": 0.0005, "packet_length_mean": 44, "packet_length_std": 2,
+            "packets_per_second": 2000, "bytes_per_second": 88000, "ttl": 64,
+            "syn_count": 1, "ack_count": 0, "fin_count": 0, "rst_count": 1,
+            "flags_SYN": 0.5, "flags_ACK": 0, "flags_FIN": 0, "flags_RST": 0.5,
+            "flow_duration": 0.0005, "active_mean": 0.0005, "idle_mean": 0,
+        }
+    },
+}
+
+
+def _features_to_vector(features: dict, input_shape, num_classes):
+    """Convert a dict of features to the model's expected numpy input."""
+    import numpy as np, math
+    # Canonical feature order
+    FEATURE_KEYS = [
+        "src_port", "dst_port", "protocol", "duration", "packet_length_mean",
+        "packet_length_std", "packets_per_second", "bytes_per_second", "ttl",
+        "syn_count", "ack_count", "fin_count", "rst_count",
+        "flags_SYN", "flags_ACK", "flags_FIN", "flags_RST",
+        "flow_duration", "active_mean", "idle_mean",
+    ]
+    raw = [float(features.get(k, 0.0)) for k in FEATURE_KEYS]
+    t, fpst = input_shape  # (timesteps, features_per_step)
+    total_features = t * fpst
+    # Pad or trim
+    if len(raw) < total_features:
+        raw = raw + [0.0] * (total_features - len(raw))
+    raw = raw[:total_features]
+    return np.array(raw, dtype=np.float32).reshape(1, t, fpst)
+
+
+def _heuristic_classify(features: dict, profile_class: str):
+    """Rule-based fallback classification when no model is trained."""
+    import random
+    pps = features.get("packets_per_second", 0)
+    syn_ratio = features.get("flags_SYN", 0)
+    duration  = features.get("duration", 1)
+    dst_port  = features.get("dst_port", 80)
+
+    if pps > 10000 or syn_ratio > 0.8:
+        cls, conf = "DDoS", round(0.88 + random.uniform(0, 0.1), 3)
+    elif dst_port < 1024 and duration < 0.001:
+        cls, conf = "RECON", round(0.82 + random.uniform(0, 0.1), 3)
+    elif pps < 100 and duration > 1:
+        cls, conf = "BENIGN", round(0.91 + random.uniform(0, 0.08), 3)
+    else:
+        # Use profile_class as the ground-truth label for synthetic
+        cls  = profile_class if profile_class else "BENIGN"
+        conf = round(0.78 + random.uniform(0, 0.12), 3)
+    return cls, conf
+
+
+@app.route("/api/live_test", methods=["POST"])
+def api_live_test():
+    """Run a single traffic sample through the trained model (or heuristic fallback)."""
+    import numpy as np, math, random
+    from datetime import datetime
+
+    data    = request.get_json(force=True)
+    source  = data.get("source", "synthetic")   # synthetic | live | csv
+    profile = data.get("profile", "normal_http") # profile key for synthetic
+    csv_row = data.get("csv_row", "")            # raw csv string for csv mode
+    raw_features_in = data.get("features", {})   # dict from live capture / form
+
+    CLASS_LABELS = ["BENIGN", "DDoS", "RECON", "DoS", "Web Attack", "Bot", "Infiltration", "Heartbleed", "Brute Force", "FTP-Patator"]
+
+    # ── Resolve feature vector ──────────────────────────────────────────────────
+    profile_meta = SYNTHETIC_PROFILES.get(profile, SYNTHETIC_PROFILES["normal_http"])
+    source_label = "SYNTHETIC" if source == "synthetic" else ("LIVE CAPTURE" if source == "live" else "CSV")
+    source_color = {"synthetic": "blue", "live": "purple", "csv": "gray"}.get(source, "gray")
+
+    if source == "synthetic":
+        features = dict(profile_meta["features"])
+    elif source == "csv":
+        import csv, io
+        try:
+            reader = csv.reader(io.StringIO(csv_row.strip()))
+            vals   = [float(v) for v in next(reader)]
+            FEATURE_KEYS = [
+                "src_port","dst_port","protocol","duration","packet_length_mean",
+                "packet_length_std","packets_per_second","bytes_per_second","ttl",
+                "syn_count","ack_count","fin_count","rst_count",
+                "flags_SYN","flags_ACK","flags_FIN","flags_RST",
+                "flow_duration","active_mean","idle_mean",
+            ]
+            features = {k: vals[i] if i < len(vals) else 0.0 for i, k in enumerate(FEATURE_KEYS)}
+        except Exception as ex:
+            return jsonify({"error": f"CSV parse error: {ex}"}), 400
+    else:  # live or pre-extracted dict
+        features = raw_features_in if raw_features_in else dict(profile_meta["features"])
+
+    # ── Inference ───────────────────────────────────────────────────────────────
+    model_used = False
+    probs_out  = {}
+    prediction = "BENIGN"
+    confidence = 0.0
+
+    keras_model = _trained_model_ref.get("model")
+    input_shape = _trained_model_ref.get("input_shape")
+    num_classes = _trained_model_ref.get("num_classes", 2)
+
+    if keras_model is not None and input_shape is not None:
+        try:
+            X = _features_to_vector(features, input_shape, num_classes)
+            preds = keras_model.predict(X, verbose=0)[0]
+            top_idx = int(np.argmax(preds))
+            confidence = float(round(float(preds[top_idx]), 4))
+
+            # Map class index → label
+            if num_classes == 2:
+                label_map = {0: "BENIGN", 1: "DDoS"}
+            else:
+                label_map = {i: CLASS_LABELS[i] if i < len(CLASS_LABELS) else f"Class-{i}" for i in range(num_classes)}
+
+            prediction = label_map.get(top_idx, f"Class-{top_idx}")
+            probs_out  = {label_map.get(i, f"Class-{i}"): round(float(p), 4) for i, p in enumerate(preds)}
+            model_used = True
+        except Exception as ex:
+            logger.warning(f"Live test model inference failed: {ex}")
+
+    if not model_used:
+        # Heuristic fallback
+        ground_truth_class = profile_meta.get("class", "BENIGN") if source == "synthetic" else "BENIGN"
+        prediction, confidence = _heuristic_classify(features, ground_truth_class)
+        probs_out = {
+            "BENIGN": round(1.0 - confidence if prediction != "BENIGN" else confidence, 4),
+            "DDoS":   round(confidence if prediction == "DDoS" else random.uniform(0.02, 0.10), 4),
+            "RECON":  round(confidence if prediction == "RECON" else random.uniform(0.01, 0.06), 4),
+        }
+
+    # ── Action recommendation ────────────────────────────────────────────────────
+    if prediction == "BENIGN":
+        action = "ALLOW — Traffic appears normal. No action required."
+        action_color = "green"
+    elif prediction in ("DDoS", "DoS"):
+        action = "BLOCK — High-confidence DDoS detected. Activate rate-limiting and blacklist source IP."
+        action_color = "red"
+    elif prediction == "RECON":
+        action = "ALERT — Reconnaissance activity detected. Flag source IP for monitoring."
+        action_color = "orange"
+    else:
+        action = f"MONITOR — Anomalous traffic ({prediction}). Escalate to security team."
+        action_color = "orange"
+
+    result = {
+        "prediction":     prediction,
+        "confidence":     confidence,
+        "class_probs":    probs_out,
+        "source_type":    source_label,
+        "source_color":   source_color,
+        "profile_label":  profile_meta.get("label", profile),
+        "profile_class":  profile_meta.get("class", "?"),
+        "profile_color":  profile_meta.get("color", "gray"),
+        "model_used":     model_used,
+        "arch":           _trained_model_ref.get("arch", "N/A"),
+        "action":         action,
+        "action_color":   action_color,
+        "timestamp":      datetime.now().strftime("%H:%M:%S"),
+        "feature_summary": {
+            "packets_per_second": features.get("packets_per_second", 0),
+            "protocol":           features.get("protocol", 0),
+            "duration":           features.get("duration", 0),
+            "flags_SYN":          features.get("flags_SYN", 0),
+            "packet_length_mean": features.get("packet_length_mean", 0),
+        },
+    }
+
+    # Store in history
+    system_state["live_test_history"].insert(0, result)
+    system_state["live_test_history"] = system_state["live_test_history"][:20]
+
+    return jsonify(result)
+
+
+@app.route("/api/live_test/capture", methods=["POST"])
+def api_live_test_capture():
+    """Capture real traffic via Scapy, extract features, run inference."""
+    import threading
+    duration_s = int(request.get_json(force=True).get("duration", 5))
+
+    def _do_capture():
+        import random
+        try:
+            from scapy.all import sniff, IP, TCP, UDP
+            packets_data = []
+
+            def _pkt(pkt):
+                if pkt.haslayer(IP):
+                    proto = 6 if pkt.haslayer(TCP) else (17 if pkt.haslayer(UDP) else 0)
+                    sport = pkt[TCP].sport if pkt.haslayer(TCP) else (pkt[UDP].sport if pkt.haslayer(UDP) else 0)
+                    dport = pkt[TCP].dport if pkt.haslayer(TCP) else (pkt[UDP].dport if pkt.haslayer(UDP) else 0)
+                    flags_syn = 1 if pkt.haslayer(TCP) and (pkt[TCP].flags & 0x02) else 0
+                    flags_ack = 1 if pkt.haslayer(TCP) and (pkt[TCP].flags & 0x10) else 0
+                    packets_data.append({
+                        "len": len(pkt), "proto": proto, "sport": sport,
+                        "dport": dport, "ttl": pkt[IP].ttl,
+                        "flags_syn": flags_syn, "flags_ack": flags_ack,
+                    })
+
+            sniff(filter="ip", prn=_pkt, timeout=duration_s, store=False)
+
+            if not packets_data:
+                socketio.emit("live_capture_result", {"error": "No packets captured. Check admin rights."})
+                return
+
+            # Aggregate into a flow feature dict
+            import numpy as np
+            lengths  = [p["len"] for p in packets_data]
+            total_t  = max(duration_s, 0.001)
+            features = {
+                "src_port": packets_data[0]["sport"],
+                "dst_port": packets_data[0]["dport"],
+                "protocol": packets_data[0]["proto"],
+                "duration": total_t,
+                "packet_length_mean": sum(lengths) / len(lengths),
+                "packet_length_std":  float(np.std(lengths)) if len(lengths) > 1 else 0,
+                "packets_per_second": len(packets_data) / total_t,
+                "bytes_per_second":   sum(lengths) / total_t,
+                "ttl": packets_data[0]["ttl"],
+                "syn_count": sum(p["flags_syn"] for p in packets_data),
+                "ack_count": sum(p["flags_ack"] for p in packets_data),
+                "fin_count": 0, "rst_count": 0,
+                "flags_SYN": sum(p["flags_syn"] for p in packets_data) / len(packets_data),
+                "flags_ACK": sum(p["flags_ack"] for p in packets_data) / len(packets_data),
+                "flags_FIN": 0, "flags_RST": 0,
+                "flow_duration": total_t,
+                "active_mean": total_t * 0.7, "idle_mean": total_t * 0.3,
+            }
+
+            # POST internally to /api/live_test
+            keras_model = _trained_model_ref.get("model")
+            input_shape = _trained_model_ref.get("input_shape")
+            num_classes = _trained_model_ref.get("num_classes", 2)
+
+            model_used = False
+            prediction, confidence, probs_out = "BENIGN", 0.0, {}
+
+            if keras_model and input_shape:
+                try:
+                    X = _features_to_vector(features, input_shape, num_classes)
+                    preds = keras_model.predict(X, verbose=0)[0]
+                    top_idx = int(np.argmax(preds))
+                    confidence = float(round(float(preds[top_idx]), 4))
+                    CLASS_LABELS = ["BENIGN", "DDoS", "RECON", "DoS", "Web Attack", "Bot", "Infiltration", "Heartbleed", "Brute Force", "FTP-Patator"]
+                    label_map = ({0: "BENIGN", 1: "DDoS"} if num_classes == 2
+                                 else {i: CLASS_LABELS[i] if i < len(CLASS_LABELS) else f"Class-{i}" for i in range(num_classes)})
+                    prediction = label_map.get(top_idx, f"Class-{top_idx}")
+                    probs_out  = {label_map.get(i, f"Class-{i}"): round(float(p), 4) for i, p in enumerate(preds)}
+                    model_used = True
+                except Exception as ex:
+                    logger.warning(f"Capture inference error: {ex}")
+
+            if not model_used:
+                prediction, confidence = _heuristic_classify(features, "BENIGN")
+                probs_out = {"BENIGN": confidence, "DDoS": round(1-confidence, 4)}
+
+            from datetime import datetime
+            action = ("ALLOW — Live traffic appears normal." if prediction == "BENIGN"
+                      else f"ALERT — {prediction} detected in live capture. Investigate immediately.")
+
+            result = {
+                "prediction": prediction, "confidence": confidence,
+                "class_probs": probs_out, "source_type": "LIVE CAPTURE",
+                "source_color": "purple", "profile_label": f"Live Capture ({len(packets_data)} packets)",
+                "profile_class": prediction, "profile_color": "purple" if prediction == "BENIGN" else "red",
+                "model_used": model_used, "arch": _trained_model_ref.get("arch", "heuristic"),
+                "action": action, "action_color": "green" if prediction == "BENIGN" else "red",
+                "timestamp": datetime.now().strftime("%H:%M:%S"),
+                "packets_captured": len(packets_data),
+                "feature_summary": {
+                    "packets_per_second": features["packets_per_second"],
+                    "protocol": features["protocol"],
+                    "duration": features["duration"],
+                    "flags_SYN": features["flags_SYN"],
+                    "packet_length_mean": features["packet_length_mean"],
+                },
+            }
+            system_state["live_test_history"].insert(0, result)
+            system_state["live_test_history"] = system_state["live_test_history"][:20]
+            socketio.emit("live_capture_result", result)
+
+        except ImportError:
+            socketio.emit("live_capture_result", {"error": "Scapy not installed. Cannot run live capture."})
+        except Exception as ex:
+            socketio.emit("live_capture_result", {"error": f"Capture failed: {str(ex)[:120]}"})
+
+    import numpy as np
+    t = threading.Thread(target=_do_capture, daemon=True)
+    t.start()
+    return jsonify({"status": "capturing", "duration": duration_s})
+
+
+@app.route("/api/live_test/profiles")
+def api_live_test_profiles():
+    """Return the list of synthetic traffic profiles for the UI."""
+    profiles = [
+        {"id": k, "label": v["label"], "class": v["class"], "color": v["color"], "description": v["description"]}
+        for k, v in SYNTHETIC_PROFILES.items()
+    ]
+    return jsonify(profiles)
+
+
+@app.route("/api/live_test/history")
+def api_live_test_history():
+    return jsonify(system_state["live_test_history"])
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # SocketIO handlers
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -809,9 +1247,9 @@ if __name__ == "__main__":
     print("=" * 70)
     print("  FL-DDoS Monitoring Dashboard  v3.0  (Real Pipeline)")
     print("=" * 70)
-    print(f"\n  🌐  http://localhost:5000")
-    print(f"  📡  SocketIO real-time events")
-    print(f"  🗂️   Data path: {DATA_PROCESSED}")
+    print(f"\n  [http]  http://localhost:5000")
+    print(f"  [ws]    SocketIO real-time events")
+    print(f"  [data]  Data path: {DATA_PROCESSED}")
     print(f"\n  Configure training in the browser wizard, then click Start.")
     print("=" * 70 + "\n")
     socketio.run(app, debug=False, port=5000, allow_unsafe_werkzeug=True)

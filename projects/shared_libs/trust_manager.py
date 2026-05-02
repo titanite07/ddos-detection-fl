@@ -56,14 +56,14 @@ class NodeCredentials:
 class TrustScore:
     """Trust score calculation and management"""
     
-    def __init__(self, initial_score: float = 1.0):
+    def __init__(self, initial_score: float = 0.95):
         """
         Initialize trust score
         
         Args:
-            initial_score: Initial trust score (0.0 to 1.0)
+            initial_score: Initial trust score (0.0 to 0.95)
         """
-        self.score = max(0.0, min(1.0, initial_score))
+        self.score = max(0.0, min(0.95, initial_score))
         self.history = deque(maxlen=100)
         self.history.append((datetime.now(), self.score, "initialization"))
         
@@ -72,7 +72,7 @@ class TrustScore:
         delta: float,
         reason: str,
         min_score: float = 0.0,
-        max_score: float = 1.0
+        max_score: float = 0.95
     ):
         """
         Update trust score
@@ -479,6 +479,27 @@ class TrustManager:
             return 0.0
         return self.trust_scores[node_id].get_score()
     
+    def apply_temporal_decay(self, decay_rate: float = 0.02, minimum_floor: float = 0.50):
+        """
+        Apply temporal decay to all registered nodes to prevent static high-trust accumulation.
+        Nodes must actively contribute to outpace the bleed.
+        """
+        logger.info(f"Applying temporal trust bleed (-{decay_rate}) across all active nodes...")
+        for node_id, trust_score_obj in self.trust_scores.items():
+            if node_id in self.quarantined_nodes:
+                continue
+            
+            current_score = trust_score_obj.get_score()
+            if current_score > minimum_floor:
+                # Calculate penalty without dropping below the floor
+                penalty = max(-decay_rate, minimum_floor - current_score)
+                trust_score_obj.update(
+                    delta=penalty,
+                    reason=f"Temporal Decay (Bleed)",
+                    min_score=0.0,
+                    max_score=0.95
+                )
+
     def get_node_status(self, node_id: str) -> Dict[str, Any]:
         """Get comprehensive status of a node"""
         if node_id not in self.registered_nodes:
